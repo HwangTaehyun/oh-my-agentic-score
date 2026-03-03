@@ -67,11 +67,11 @@ export default function ToolUsagePage() {
       <div className="space-y-6">
         {/* Hero — Pencil P9 */}
         <div>
-          <p className="text-xs font-mono tracking-wider mb-1" style={{ color: "#00FF88" }}>
+          <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
             // TOOL ANALYTICS
           </p>
-          <h1 className="text-4xl font-bold text-white tracking-tight">Tool Usage</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Tool Usage</h1>
+          <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
             Per-tool breakdown across {sessions.length} sessions
           </p>
         </div>

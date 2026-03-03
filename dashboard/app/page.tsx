@@ -60,10 +60,10 @@ function applyFilters(
 function OverviewHero({ totalSessions }: { totalSessions: number }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-wider mb-1" style={{ color: "#00FF88" }}>
+      <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
         // THREAD-BASED ENGINEERING METRICS ({totalSessions} sessions)
       </p>
-      <h1 className="text-4xl font-bold text-white tracking-tight">Overview</h1>
+      <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Overview</h1>
     </div>
   );
 }

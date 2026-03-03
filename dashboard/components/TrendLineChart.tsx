@@ -77,7 +77,7 @@ export default function TrendLineChart({ sessions }: TrendLineChartProps) {
   };
 
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+    <div className="rounded-lg p-4" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
       <h3 className="text-sm font-semibold text-gray-300 mb-3">
         Per-Session Agentic Score
       </h3>

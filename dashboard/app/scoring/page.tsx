@@ -5,7 +5,6 @@ import {
   DIMENSIONS,
   THREAD_TYPES,
   ROADMAP_STEPS,
-  BORDER_COLORS,
   TEXT_COLORS,
   BG_COLORS,
 } from "./scoring-data";
@@ -15,11 +14,11 @@ import {
 function ScoringHero() {
   return (
     <div>
-      <p className="text-xs font-mono tracking-wider mb-1" style={{ color: "#00FF88" }}>
+      <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
         // HOW SCORES ARE CALCULATED
       </p>
-      <h1 className="text-4xl font-bold text-white tracking-tight">Scoring Guide</h1>
-      <p className="text-sm text-gray-400 mt-1">
+      <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Scoring Guide</h1>
+      <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
         Thread-based engineering metrics across 4 dimensions
       </p>
     </div>
@@ -30,7 +29,7 @@ function ScoringHero() {
 
 function OverallScoreCard() {
   return (
-    <section className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+    <section className="rounded-lg p-6" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
       <p className="text-[11px] font-mono text-gray-500 tracking-wider mb-2">
         OVERALL COMPOSITE SCORE
       </p>
@@ -48,11 +47,10 @@ function OverallScoreCard() {
 
 function DimensionCard({ dim }: { dim: DimensionConfig }) {
   const tc = TEXT_COLORS[dim.color];
-  const bc = BORDER_COLORS[dim.color];
   const bg = BG_COLORS[dim.color];
 
   return (
-    <section className={`bg-gray-900 rounded-lg border ${bc} p-6 space-y-4`}>
+    <section className="rounded-lg p-6 space-y-4" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
       {/* Header */}
       <div>
         <div className="flex items-baseline justify-between mb-1">
@@ -100,7 +98,7 @@ function FormulaBlock({ title, lines, colorClass }: {
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-300 mb-2">{title}</h3>
-      <div className="bg-gray-800 rounded p-3 font-mono text-xs text-gray-300 space-y-1">
+      <div className="rounded p-3 font-mono text-xs text-gray-300 space-y-1" style={{ background: "#1A1A1A" }}>
         {lines.map((f, i) => (
           <div key={i}>
             <code className={colorClass}>{f.code}</code>
@@ -118,7 +116,7 @@ function DetailBlock({ title, lines }: { title: string; lines: string[] }) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-300 mb-2">{title}</h3>
-      <div className="bg-gray-800/50 rounded p-3 text-xs text-gray-400 space-y-0.5">
+      <div className="rounded p-3 text-xs text-gray-400 space-y-0.5" style={{ background: "#1A1A1A80" }}>
         {lines.map((line, i) =>
           line === "" ? (
             <div key={i} className="h-1" />
@@ -221,7 +219,7 @@ function TipsList({ tips, colorClass }: { tips: string[]; colorClass: string }) 
 
 function ThreadTypeSection() {
   return (
-    <section className="bg-gray-900 rounded-lg border border-gray-700 p-6">
+    <section className="rounded-lg p-6" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
       <h2 className="text-lg font-bold text-white mb-4">Thread Type Classification</h2>
       <p className="text-gray-400 text-sm mb-4">
         세션은 아래 우선순위 순서로 한 가지 유형으로 분류됩니다 (Z가 가장 높은 우선순위):
@@ -306,7 +304,7 @@ function ThresholdCards() {
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {items.map((t) => (
-          <div key={t.code} className="bg-gray-800 rounded p-3 text-center">
+          <div key={t.code} className="rounded p-3 text-center" style={{ background: "#1A1A1A" }}>
             <div className="text-cyan-400 font-mono text-lg font-bold">{t.value}</div>
             <div className="text-xs text-gray-400 mt-1">{t.label}</div>
             <div className="text-[10px] text-gray-600 mt-0.5">{t.code}</div>
@@ -324,7 +322,7 @@ function WeightedScoringBlock() {
       <p className="text-gray-400 text-xs mb-3">
         더 길고 복잡한 세션에 더 많은 가중치를 부여합니다.
       </p>
-      <div className="bg-gray-800 rounded p-4 font-mono text-xs text-gray-300 space-y-1">
+      <div className="rounded p-4 font-mono text-xs text-gray-300 space-y-1" style={{ background: "#1A1A1A" }}>
         <p>weight(session) = log1p(total_tool_calls) * log1p(session_duration_minutes)</p>
         <p className="text-gray-500">weighted_score = &Sigma;(score_i * weight_i) / &Sigma;(weight_i)</p>
       </div>
@@ -339,7 +337,7 @@ function ConsistencyBlock() {
       <p className="text-gray-400 text-xs mb-3">
         최근 20개 세션의 overall score 표준편차를 기반으로 일관성을 측정합니다.
       </p>
-      <div className="bg-gray-800 rounded p-4 font-mono text-xs text-gray-300 space-y-1">
+      <div className="rounded p-4 font-mono text-xs text-gray-300 space-y-1" style={{ background: "#1A1A1A" }}>
         <p>consistency = max(0, min(10, 10 - std_dev * 3.33))</p>
         <p className="text-gray-500">std_dev = 0 &rarr; 10.0 (완벽한 일관성) | std_dev &ge; 3 &rarr; ~0.0</p>
       </div>
@@ -354,7 +352,7 @@ function CompositeRankBlock() {
       <p className="text-gray-400 text-xs mb-3">
         가중 점수(80%)와 일관성 점수(20%)를 결합한 최종 비교 순위 점수입니다.
       </p>
-      <div className="bg-gray-800 rounded p-3 font-mono text-xs text-gray-300">
+      <div className="rounded p-3 font-mono text-xs text-gray-300" style={{ background: "#1A1A1A" }}>
         composite_rank = weighted_score * 0.8 + consistency * 0.2
       </div>
     </div>
@@ -365,7 +363,7 @@ function CompositeRankBlock() {
 
 function DataSourceInfo() {
   return (
-    <section className="bg-gray-800/50 rounded-lg p-4 text-xs text-gray-500">
+    <section className="rounded-lg p-4 text-xs text-gray-500" style={{ background: "#1A1A1A80" }}>
       <p className="font-semibold text-gray-400 mb-1">Data Source</p>
       <p>Claude Code JSONL 세션 로그: <code>~/.claude/projects/&lt;hash&gt;/&lt;session&gt;.jsonl</code></p>
       <p className="mt-1">서브에이전트 로그: <code>&lt;session-dir&gt;/subagents/agent-&lt;id&gt;.jsonl</code></p>

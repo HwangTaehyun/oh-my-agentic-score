@@ -51,11 +51,11 @@ export default function SessionsPage() {
       <div className="space-y-6">
         {/* Hero — Pencil consistent */}
         <div>
-          <p className="text-xs font-mono tracking-wider mb-1" style={{ color: "#00FF88" }}>
+          <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
             // SESSION HISTORY
           </p>
-          <h1 className="text-4xl font-bold text-white tracking-tight">Sessions</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Sessions</h1>
+          <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
             {sessions.length} sessions across {projects.length} projects
           </p>
         </div>

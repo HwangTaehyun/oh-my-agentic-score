@@ -24,14 +24,14 @@ function persistHiddenProjects(hashes: string[]) {
 function ProjectsHero({ count, hiddenCount }: { count: number; hiddenCount: number }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-wider mb-1" style={{ color: "#00FF88" }}>
+      <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
         // PROJECT-LEVEL METRICS
       </p>
-      <h1 className="text-4xl font-bold text-white tracking-tight">Projects</h1>
-      <p className="text-sm text-gray-400 mt-1">
+      <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Projects</h1>
+      <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
         {count} projects tracked
         {hiddenCount > 0 && (
-          <span className="text-gray-500"> ({hiddenCount} hidden)</span>
+          <span style={{ color: "#666" }}> ({hiddenCount} hidden)</span>
         )}
       </p>
     </div>
@@ -61,23 +61,26 @@ function ProjectCard({
 
       <Link
         href={`/projects/${encodeURIComponent(p.project_hash)}`}
-        className="block bg-gray-900 rounded-lg border border-gray-800 p-4 hover:border-cyan-500/50 transition-colors"
+        className="block rounded-lg p-5 hover:brightness-110 transition-all"
+        style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}
       >
-        <h3 className="text-lg font-semibold text-white truncate pr-6">
-          {getProjectName(p.project_path)}
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-white truncate pr-6">
+            {getProjectName(p.project_path)}
+          </h3>
+        </div>
 
-        <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+        <div className="flex items-center gap-4 mt-1.5 text-[11px]" style={{ color: "#8a8a8a" }}>
           <span>{p.session_count} sessions</span>
-          <span className="font-mono" style={{ color: "#00FF88" }}>
+          <span className="font-semibold" style={{ color: "#00FF88" }}>
             Avg: {p.avg_overall_score.toFixed(2)}
           </span>
         </div>
 
-        <div className="border-t border-gray-800 my-3" />
+        <div className="my-2.5" style={{ height: 1, background: "#2f2f2f" }} />
 
-        {/* Mini dimension bars — Pencil P7 card dimension rows */}
-        <div className="space-y-1.5">
+        {/* Dimension bars — Pencil P7 exact colors */}
+        <div className="space-y-2">
           <DimensionBar label="More" value={p.avg_parallelism_score} max={5} color="#00FF88" />
           <DimensionBar label="Longer" value={p.avg_autonomy_score} max={10} color="#FFD600" />
           <DimensionBar label="Thicker" value={p.avg_density_score} max={10} color="#FF6B35" />
@@ -102,12 +105,12 @@ function DimensionBar({
 }) {
   const pct = Math.min((value / max) * 100, 100);
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-[10px]">
       <span className="w-14 font-mono" style={{ color }}>{label}</span>
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 overflow-hidden" style={{ background: "#1A1A1A", borderRadius: 3 }}>
         <div
-          className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className="h-full"
+          style={{ width: `${pct}%`, backgroundColor: color, borderRadius: 3 }}
         />
       </div>
       <span className="w-8 text-right font-mono" style={{ color }}>
@@ -153,8 +156,8 @@ export default function ProjectsPage() {
         {hiddenCount > 0 && (
           <button
             onClick={restoreAll}
-            className="text-xs font-mono px-3 py-1.5 border border-gray-700 hover:border-cyan-500/50 rounded-md transition-colors"
-            style={{ color: "#00FF88" }}
+            className="text-[11px] font-mono px-4 py-2 transition-colors"
+            style={{ color: "#00FF88", background: "#1A1A1A", border: "1px solid #2f2f2f" }}
           >
             Restore {hiddenCount} hidden
           </button>

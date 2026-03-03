@@ -85,7 +85,7 @@ export default function ToolCallBarChart({
   };
 
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+    <div className="rounded-lg p-4" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-300">
           Avg Tool Calls per Session
