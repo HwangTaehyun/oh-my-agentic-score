@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#0A0A0A"/>
+
+  <!-- Diamond radar at center -->
+  <g transform="translate(16, 15)">
+    <!-- Grid diamond -->
+    <rect x="-8" y="-8" width="16" height="16"
+          transform="rotate(45)"
+          fill="none" stroke="#2f2f2f" stroke-width="0.8"/>
+
+    <!-- 4 colored triangular sections -->
+    <polygon points="0,0 -3,-7 3,-7" fill="#00FF88" fill-opacity="0.5"/>
+    <polygon points="0,0 8,-3 8,3" fill="#FFD600" fill-opacity="0.5"/>
+    <polygon points="0,0 -2,5 2,5" fill="#FF6B35" fill-opacity="0.5"/>
+    <polygon points="0,0 -6,-2 -6,2" fill="#A855F7" fill-opacity="0.5"/>
+
+    <!-- Score dots -->
+    <circle cx="0" cy="-7" r="1.5" fill="#00FF88"/>
+    <circle cx="8" cy="0" r="1.5" fill="#FFD600"/>
+    <circle cx="0" cy="5" r="1.5" fill="#FF6B35"/>
+    <circle cx="-6" cy="0" r="1.5" fill="#A855F7"/>
+  </g>
+
+  <!-- Terminal cursor -->
+  <text x="16" y="28" font-family="monospace" font-size="6" font-weight="700" fill="#00FF88" text-anchor="middle" opacity="0.9">&gt;_</text>
+</svg>

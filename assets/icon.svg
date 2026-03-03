@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Glow filters for each dimension -->
+    <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="glow-yellow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="glow-orange" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="glow-purple" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <!-- Radial gradient for center glow -->
+    <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background: rounded square -->
+  <rect width="512" height="512" rx="96" fill="#0A0A0A"/>
+
+  <!-- Outer diamond grid lines -->
+  <g transform="translate(256, 256)">
+    <!-- Grid rings (rotated 45° squares) -->
+    <rect x="-120" y="-120" width="240" height="240" rx="4"
+          transform="rotate(45)"
+          fill="none" stroke="#2f2f2f" stroke-width="1.5"/>
+    <rect x="-80" y="-80" width="160" height="160" rx="3"
+          transform="rotate(45)"
+          fill="none" stroke="#2f2f2f" stroke-width="1"/>
+    <rect x="-40" y="-40" width="80" height="80" rx="2"
+          transform="rotate(45)"
+          fill="none" stroke="#2f2f2f" stroke-width="0.8"/>
+
+    <!-- Axis lines -->
+    <line x1="0" y1="-140" x2="0" y2="140" stroke="#2f2f2f" stroke-width="0.8"/>
+    <line x1="-140" y1="0" x2="140" y2="0" stroke="#2f2f2f" stroke-width="0.8"/>
+
+    <!-- Colored data area - 4 triangular sections -->
+    <!-- More (top, green) - Parallelism -->
+    <polygon points="0,0 -40,-85 40,-85"
+             fill="#00FF88" fill-opacity="0.25" stroke="#00FF88" stroke-width="1.5" stroke-opacity="0.6"/>
+    <!-- Longer (right, yellow) - Autonomy -->
+    <polygon points="0,0 95,-35 95,35"
+             fill="#FFD600" fill-opacity="0.25" stroke="#FFD600" stroke-width="1.5" stroke-opacity="0.6"/>
+    <!-- Thicker (bottom, orange) - Density -->
+    <polygon points="0,0 -30,55 30,55"
+             fill="#FF6B35" fill-opacity="0.25" stroke="#FF6B35" stroke-width="1.5" stroke-opacity="0.6"/>
+    <!-- Fewer (left, purple) - Trust -->
+    <polygon points="0,0 -75,-30 -75,30"
+             fill="#A855F7" fill-opacity="0.25" stroke="#A855F7" stroke-width="1.5" stroke-opacity="0.6"/>
+
+    <!-- Data polygon outline connecting all 4 points -->
+    <polygon points="0,-85 95,0 0,55 -75,0"
+             fill="none" stroke="#00FF88" stroke-width="1" stroke-opacity="0.3"
+             stroke-dasharray="4,4"/>
+
+    <!-- Score dots -->
+    <circle cx="0" cy="-85" r="6" fill="#00FF88" filter="url(#glow-green)"/>
+    <circle cx="95" cy="0" r="6" fill="#FFD600" filter="url(#glow-yellow)"/>
+    <circle cx="0" cy="55" r="6" fill="#FF6B35" filter="url(#glow-orange)"/>
+    <circle cx="-75" cy="0" r="6" fill="#A855F7" filter="url(#glow-purple)"/>
+
+    <!-- Center dot -->
+    <circle cx="0" cy="0" r="4" fill="#FFFFFF" fill-opacity="0.15"/>
+  </g>
+
+  <!-- Terminal cursor at bottom -->
+  <text x="256" y="438" font-family="'Courier New', monospace" font-size="32" font-weight="700" fill="#00FF88" text-anchor="middle" opacity="0.8">&gt;_</text>
+</svg>

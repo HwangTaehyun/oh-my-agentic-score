@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Node.js
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# Data (user-specific)
+dashboard/public/data/metrics.json
+
+# Storage
+.measure-thread/
+.omas/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Secrets / Credentials
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+
+# OS
+.DS_Store

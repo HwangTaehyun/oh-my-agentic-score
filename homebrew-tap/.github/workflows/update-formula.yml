@@ -1,0 +1,97 @@
+name: Update oh-my-agentic-score formula
+
+on:
+  # Trigger manually after a PyPI release
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to update to (leave empty for latest)"
+        required: false
+  # Trigger from the main repo via repository_dispatch
+  repository_dispatch:
+    types: [pypi-release]
+
+permissions:
+  contents: write
+
+jobs:
+  update-formula:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Generate formula with poet
+        run: |
+          python3 -m venv /tmp/poet-env
+          source /tmp/poet-env/bin/activate
+
+          VERSION="${{ github.event.inputs.version || github.event.client_payload.version || '' }}"
+          if [ -n "$VERSION" ]; then
+            pip install "oh-my-agentic-score==${VERSION}" homebrew-pypi-poet
+          else
+            pip install oh-my-agentic-score homebrew-pypi-poet
+          fi
+
+          poet -f oh-my-agentic-score > /tmp/generated-formula.rb
+          deactivate
+
+      - name: Patch formula metadata
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open("/tmp/generated-formula.rb") as f:
+              content = f.read()
+
+          # Fix description
+          content = re.sub(
+              r'desc ".*?"',
+              'desc "Measure and visualize agentic coding performance"',
+              content
+          )
+
+          # Fix homepage
+          content = re.sub(
+              r'homepage ".*?"',
+              'homepage "https://github.com/HwangTaehyun/oh-my-agentic-score"',
+              content
+          )
+
+          # Add license if missing
+          if 'license' not in content:
+              content = content.replace(
+                  '  sha256',
+                  '  license "MIT"\n\n  sha256',
+                  1
+              )
+
+          # Fix test block
+          content = re.sub(
+              r'test do.*?end',
+              'test do\n    assert_match "Oh My Agentic Score", shell_output("#{bin}/omas --help")\n  end',
+              content,
+              flags=re.DOTALL
+          )
+
+          with open("Formula/oh-my-agentic-score.rb", "w") as f:
+              f.write(content)
+
+          print("--- Generated Formula ---")
+          print(content[:500] + "...")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/oh-my-agentic-score.rb
+
+          VERSION=$(grep -oP 'version "\K[^"]*' Formula/oh-my-agentic-score.rb || echo "unknown")
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Update oh-my-agentic-score to ${VERSION}"
+          git push

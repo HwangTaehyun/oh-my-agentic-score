@@ -1,0 +1,260 @@
+"""Core JSONL session parser - extracts SessionData from Claude Code logs."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from dateutil.parser import isoparse
+
+from omas.config import AUTOMATED_MESSAGE_PATTERNS
+from omas.models import (
+    SessionData,
+    SubAgentInfo,
+    TokenUsage,
+    ToolCall,
+    UserMessage,
+)
+
+
+def _is_human_message(record: dict) -> bool:
+    """Determine if a user record represents a genuine human message.
+
+    Human messages have:
+    - type == "user"
+    - userType == "external"
+    - message.content is a plain string (not a list of tool_result objects)
+    - No automated XML tags in content
+    """
+    if record.get("type") != "user":
+        return False
+    if record.get("userType") != "external":
+        return False
+
+    message = record.get("message", {})
+    content = message.get("content", "")
+
+    # Tool results come as arrays
+    if not isinstance(content, str):
+        return False
+
+    # Filter automated messages
+    for pattern in AUTOMATED_MESSAGE_PATTERNS:
+        if pattern in content:
+            return False
+
+    # Empty content is not a meaningful human message
+    if not content.strip():
+        return False
+
+    return True
+
+
+def _extract_tool_calls(record: dict, timestamp: datetime) -> list[ToolCall]:
+    """Extract tool calls from an assistant message."""
+    calls = []
+    message = record.get("message", {})
+    content_items = message.get("content", [])
+
+    if not isinstance(content_items, list):
+        return calls
+
+    for item in content_items:
+        if isinstance(item, dict) and item.get("type") == "tool_use":
+            name = item.get("name", "unknown")
+            tool_id = item.get("id", "")
+
+            # Check if this is an Agent (sub-agent) call
+            is_subagent = name == "Agent"
+            agent_id = None
+            if is_subagent:
+                agent_input = item.get("input", {})
+                agent_id = agent_input.get("name", None)
+
+            calls.append(
+                ToolCall(
+                    name=name,
+                    tool_use_id=tool_id,
+                    timestamp=timestamp,
+                    is_subagent=is_subagent,
+                    agent_id=agent_id,
+                )
+            )
+
+    return calls
+
+
+def _extract_token_usage(record: dict) -> TokenUsage:
+    """Extract token usage from an assistant message."""
+    message = record.get("message", {})
+    usage = message.get("usage", {})
+
+    return TokenUsage(
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+        cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+    )
+
+
+def _parse_timestamp(record: dict) -> Optional[datetime]:
+    """Parse ISO timestamp from a record."""
+    ts_str = record.get("timestamp")
+    if ts_str:
+        try:
+            return isoparse(ts_str)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def parse_session(jsonl_path: Path, subagent_dir: Optional[Path] = None) -> SessionData:
+    """Parse a single session JSONL file into structured SessionData."""
+    data = SessionData(session_id=jsonl_path.stem)
+    timestamps: list[datetime] = []
+    model_name = "unknown"
+
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            ts = _parse_timestamp(record)
+            if ts:
+                timestamps.append(ts)
+
+            record_type = record.get("type", "")
+            if record_type == "user":
+                _handle_user_record(record, ts, data)
+            elif record_type == "assistant":
+                model_name = _handle_assistant_record(record, ts, data, model_name)
+            elif record_type == "progress":
+                _handle_progress_record(record, ts, data)
+
+    data.model = model_name
+    if timestamps:
+        data.start_time = min(timestamps)
+        data.end_time = max(timestamps)
+
+    _build_sub_agents(data)
+    _enrich_subagent_info(data, subagent_dir)
+    return data
+
+
+def _handle_user_record(record: dict, ts, data: SessionData):
+    """Process a user-type record."""
+    is_human = _is_human_message(record)
+    content = record.get("message", {}).get("content", "")
+    preview = content[:100].strip() if isinstance(content, str) else ""
+    if ts:
+        data.user_messages.append(
+            UserMessage(timestamp=ts, is_human=is_human, content_preview=preview)
+        )
+
+
+def _handle_assistant_record(record: dict, ts, data: SessionData, model_name: str) -> str:
+    """Process an assistant-type record. Returns updated model name."""
+    data.assistant_message_count += 1
+    if ts:
+        calls = _extract_tool_calls(record, ts)
+        data.tool_calls.extend(calls)
+        if len(calls) > data.peak_parallel_tools_in_message:
+            data.peak_parallel_tools_in_message = len(calls)
+
+    usage = _extract_token_usage(record)
+    data.total_usage.input_tokens += usage.input_tokens
+    data.total_usage.output_tokens += usage.output_tokens
+    data.total_usage.cache_read_tokens += usage.cache_read_tokens
+    data.total_usage.cache_creation_tokens += usage.cache_creation_tokens
+
+    msg = record.get("message", {})
+    return msg.get("model", None) or model_name
+
+
+def _handle_progress_record(record: dict, ts, data: SessionData):
+    """Process a progress-type record for concurrency detection."""
+    progress_data = record.get("data", {})
+    if progress_data.get("type") == "agent_progress":
+        agent_id = progress_data.get("agentId", "")
+        if agent_id and ts:
+            data.agent_events.append((agent_id, ts))
+
+
+def _build_sub_agents(data: SessionData):
+    """Build sub-agent info from accumulated agent events."""
+    agent_ranges: dict[str, dict] = {}
+    for agent_id, ts in data.agent_events:
+        if agent_id not in agent_ranges:
+            agent_ranges[agent_id] = {"first": ts, "last": ts, "count": 1}
+        else:
+            agent_ranges[agent_id]["first"] = min(agent_ranges[agent_id]["first"], ts)
+            agent_ranges[agent_id]["last"] = max(agent_ranges[agent_id]["last"], ts)
+            agent_ranges[agent_id]["count"] += 1
+
+    for agent_id, info in agent_ranges.items():
+        data.sub_agents.append(
+            SubAgentInfo(
+                agent_id=agent_id, first_seen=info["first"],
+                last_seen=info["last"], tool_call_count=info["count"],
+            )
+        )
+
+
+def _enrich_subagent_info(data: SessionData, subagent_dir: Optional[Path]):
+    """Enrich sub-agent data from JSONL files (nested agents, prompts)."""
+    if not subagent_dir or not subagent_dir.exists():
+        return
+    data.subagent_jsonl_count = len(list(subagent_dir.glob("agent-*.jsonl")))
+
+    for sa_jsonl in subagent_dir.glob("agent-*.jsonl"):
+        agent_id = sa_jsonl.stem.replace("agent-", "")
+        sa = next((s for s in data.sub_agents if s.agent_id == agent_id), None)
+        if not sa:
+            continue
+        if _subagent_has_nested_agents(sa_jsonl):
+            sa.has_nested_agents = True
+        prompt = _extract_subagent_first_prompt(sa_jsonl)
+        if prompt:
+            sa.prompt_preview = prompt[:200]
+
+
+def _subagent_has_nested_agents(jsonl_path: Path) -> bool:
+    """Check if a subagent JSONL file contains its own agent_progress events."""
+    try:
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    record = json.loads(line.strip())
+                    if record.get("type") == "progress":
+                        if record.get("data", {}).get("type") == "agent_progress":
+                            return True
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return False
+
+
+def _extract_subagent_first_prompt(jsonl_path: Path) -> str:
+    """Extract the first user prompt from a subagent JSONL file."""
+    try:
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    record = json.loads(line.strip())
+                    if record.get("type") == "user":
+                        content = record.get("message", {}).get("content", "")
+                        if isinstance(content, str) and content.strip():
+                            return content.strip()
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return ""
