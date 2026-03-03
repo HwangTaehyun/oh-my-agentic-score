@@ -1,44 +1,69 @@
 "use client";
 
+import { useState } from "react";
 import {
   DimensionConfig,
+  Lang,
   DIMENSIONS,
   THREAD_TYPES,
   ROADMAP_STEPS,
+  PAGE_LABELS,
+  THRESHOLD_ITEMS,
   TEXT_COLORS,
   BG_COLORS,
 } from "./scoring-data";
 
+/* ── Language toggle (EN / KO pill buttons) ── */
+
+function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
+  return (
+    <div className="flex rounded-lg p-1" style={{ background: "#1A1A1A" }}>
+      {(["en", "ko"] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => onChange(l)}
+          className={`px-3 py-1 rounded-md text-sm font-mono transition-colors ${
+            lang === l ? "bg-cyan-600 text-white" : "text-gray-400 hover:text-white"
+          }`}
+        >
+          {l === "en" ? "EN" : "KO"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ── Hero (Pencil P8) ── */
 
-function ScoringHero() {
+function ScoringHero({ lang, onLangChange }: { lang: Lang; onLangChange: (l: Lang) => void }) {
+  const L = PAGE_LABELS[lang];
   return (
-    <div>
-      <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
-        // HOW SCORES ARE CALCULATED
-      </p>
-      <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Scoring Guide</h1>
-      <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
-        Thread-based engineering metrics across 4 dimensions
-      </p>
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
+          {L.heroSub}
+        </p>
+        <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>
+          {L.heroTitle}
+        </h1>
+        <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
+          {L.heroDesc}
+        </p>
+      </div>
+      <LangToggle lang={lang} onChange={onLangChange} />
     </div>
   );
 }
 
 /* ── Overall composite formula card ── */
 
-function OverallScoreCard() {
+function OverallScoreCard({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <section className="rounded-lg p-6" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
-      <p className="text-[11px] font-mono text-gray-500 tracking-wider mb-2">
-        OVERALL COMPOSITE SCORE
-      </p>
-      <p className="font-mono text-sm font-semibold mb-2" style={{ color: "#00FF88" }}>
-        composite = (More + Longer + Thicker + Fewer) / 4
-      </p>
-      <p className="text-xs text-gray-500">
-        Each dimension is scored 0-10. The overall score is the simple average of all four.
-      </p>
+      <p className="text-[11px] font-mono text-gray-500 tracking-wider mb-2">{L.overallLabel}</p>
+      <p className="font-mono text-sm font-semibold mb-2" style={{ color: "#00FF88" }}>{L.overallFormula}</p>
+      <p className="text-xs text-gray-500">{L.overallNote}</p>
     </section>
   );
 }
@@ -51,7 +76,6 @@ function DimensionCard({ dim }: { dim: DimensionConfig }) {
 
   return (
     <section className="rounded-lg p-6 space-y-4" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
-      {/* Header */}
       <div>
         <div className="flex items-baseline justify-between mb-1">
           <h2 className={`text-lg font-bold ${tc}`}>{dim.title}</h2>
@@ -59,30 +83,13 @@ function DimensionCard({ dim }: { dim: DimensionConfig }) {
         </div>
         <p className="text-sm text-gray-400">{dim.subtitle}</p>
       </div>
-
-      {/* Formula */}
       <FormulaBlock title={dim.formulaTitle} lines={dim.formula} colorClass={tc} />
-
-      {/* Detail */}
       <DetailBlock title={dim.detailTitle} lines={dim.detail} />
-
-      {/* Reference table */}
       {dim.referenceTable && (
-        <ReferenceGrid
-          title={dim.referenceTable.title}
-          rows={dim.referenceTable.rows}
-          colorClass={tc}
-          bgClass={bg}
-        />
+        <ReferenceGrid title={dim.referenceTable.title} rows={dim.referenceTable.rows} colorClass={tc} bgClass={bg} />
       )}
-
-      {/* Metrics */}
       <MetricsList metrics={dim.metrics} colorClass={tc} />
-
-      {/* Score ranges */}
       <ScoreRangeGrid scoring={dim.scoring} colorClass={tc} bgClass={bg} />
-
-      {/* Tips */}
       <TipsList tips={dim.tips} colorClass={tc} />
     </section>
   );
@@ -217,15 +224,14 @@ function TipsList({ tips, colorClass }: { tips: string[]; colorClass: string }) 
 
 /* ── Thread type classification section ── */
 
-function ThreadTypeSection() {
+function ThreadTypeSection({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <section className="rounded-lg p-6" style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}>
-      <h2 className="text-lg font-bold text-white mb-4">Thread Type Classification</h2>
-      <p className="text-gray-400 text-sm mb-4">
-        세션은 아래 우선순위 순서로 한 가지 유형으로 분류됩니다 (Z가 가장 높은 우선순위):
-      </p>
+      <h2 className="text-lg font-bold text-white mb-4">{L.threadTitle}</h2>
+      <p className="text-gray-400 text-sm mb-4">{L.threadDesc}</p>
       <div className="space-y-3">
-        {THREAD_TYPES.map((t) => (
+        {THREAD_TYPES[lang].map((t) => (
           <div key={t.type} className="flex items-start gap-3 text-sm">
             <span
               className="shrink-0 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -246,15 +252,14 @@ function ThreadTypeSection() {
 
 /* ── Improvement roadmap section ── */
 
-function RoadmapSection() {
+function RoadmapSection({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
-    <section className="bg-gray-900 rounded-lg border border-cyan-500/30 p-6">
-      <h2 className="text-lg font-bold text-cyan-400 mb-4">Improvement Roadmap</h2>
-      <p className="text-gray-400 text-sm mb-4">
-        Base &rarr; C &rarr; P &rarr; L &rarr; B &rarr; Z 순서로 진화하세요. 각 단계별 핵심 전략:
-      </p>
+    <section className="rounded-lg p-6" style={{ background: "#0A0A0A", border: "1px solid cyan", borderColor: "rgba(6,182,212,0.3)" }}>
+      <h2 className="text-lg font-bold text-cyan-400 mb-4">{L.roadmapTitle}</h2>
+      <p className="text-gray-400 text-sm mb-4">{L.roadmapDesc}</p>
       <div className="space-y-4">
-        {ROADMAP_STEPS.map((s) => (
+        {ROADMAP_STEPS[lang].map((s) => (
           <div key={s.to} className="flex items-start gap-3">
             <div className="flex items-center gap-1 shrink-0 text-xs font-mono">
               <span className="text-gray-500">{s.from}</span>
@@ -271,37 +276,29 @@ function RoadmapSection() {
 
 /* ── Fair comparison section ── */
 
-function FairComparisonSection() {
+function FairComparisonSection({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
-    <section className="bg-gray-900 rounded-lg border border-cyan-500/30 p-6 space-y-5">
+    <section className="rounded-lg p-6 space-y-5" style={{ background: "#0A0A0A", border: "1px solid cyan", borderColor: "rgba(6,182,212,0.3)" }}>
       <div>
-        <h2 className="text-lg font-bold text-cyan-400 mb-3">Fair Comparison System</h2>
-        <p className="text-gray-300 text-sm leading-relaxed">
-          공정한 비교를 위해 세션을 필터링하고 가중치를 부여하는 시스템입니다.
-          짧은 테스트 세션이나 자동화 스크립트가 전체 점수를 왜곡하지 않도록 합니다.
-        </p>
+        <h2 className="text-lg font-bold text-cyan-400 mb-3">{L.fairTitle}</h2>
+        <p className="text-gray-300 text-sm leading-relaxed">{L.fairDesc}</p>
       </div>
-
-      <ThresholdCards />
-      <WeightedScoringBlock />
-      <ConsistencyBlock />
-      <CompositeRankBlock />
+      <ThresholdCards lang={lang} />
+      <WeightedScoringBlock lang={lang} />
+      <ConsistencyBlock lang={lang} />
+      <CompositeRankBlock lang={lang} />
     </section>
   );
 }
 
-function ThresholdCards() {
-  const items = [
-    { value: "5 min", label: "최소 세션 시간", code: "session_duration_minutes" },
-    { value: "10 calls", label: "최소 tool call 수", code: "total_tool_calls" },
-    { value: "1 msg", label: "최소 human message 수", code: "total_human_messages" },
-  ];
+function ThresholdCards({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
+  const items = THRESHOLD_ITEMS[lang];
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-300 mb-2">Minimum Qualifying Thresholds</h3>
-      <p className="text-gray-400 text-xs mb-3">
-        아래 기준을 모두 충족해야 비교 대상으로 포함됩니다.
-      </p>
+      <h3 className="text-sm font-semibold text-gray-300 mb-2">{L.thresholdTitle}</h3>
+      <p className="text-gray-400 text-xs mb-3">{L.thresholdDesc}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {items.map((t) => (
           <div key={t.code} className="rounded p-3 text-center" style={{ background: "#1A1A1A" }}>
@@ -315,13 +312,12 @@ function ThresholdCards() {
   );
 }
 
-function WeightedScoringBlock() {
+function WeightedScoringBlock({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-300 mb-2">Weighted Scoring</h3>
-      <p className="text-gray-400 text-xs mb-3">
-        더 길고 복잡한 세션에 더 많은 가중치를 부여합니다.
-      </p>
+      <h3 className="text-sm font-semibold text-gray-300 mb-2">{L.weightedTitle}</h3>
+      <p className="text-gray-400 text-xs mb-3">{L.weightedDesc}</p>
       <div className="rounded p-4 font-mono text-xs text-gray-300 space-y-1" style={{ background: "#1A1A1A" }}>
         <p>weight(session) = log1p(total_tool_calls) * log1p(session_duration_minutes)</p>
         <p className="text-gray-500">weighted_score = &Sigma;(score_i * weight_i) / &Sigma;(weight_i)</p>
@@ -330,28 +326,26 @@ function WeightedScoringBlock() {
   );
 }
 
-function ConsistencyBlock() {
+function ConsistencyBlock({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-300 mb-2">Consistency Score (0~10)</h3>
-      <p className="text-gray-400 text-xs mb-3">
-        최근 20개 세션의 overall score 표준편차를 기반으로 일관성을 측정합니다.
-      </p>
+      <h3 className="text-sm font-semibold text-gray-300 mb-2">{L.consistencyTitle}</h3>
+      <p className="text-gray-400 text-xs mb-3">{L.consistencyDesc}</p>
       <div className="rounded p-4 font-mono text-xs text-gray-300 space-y-1" style={{ background: "#1A1A1A" }}>
         <p>consistency = max(0, min(10, 10 - std_dev * 3.33))</p>
-        <p className="text-gray-500">std_dev = 0 &rarr; 10.0 (완벽한 일관성) | std_dev &ge; 3 &rarr; ~0.0</p>
+        <p className="text-gray-500">std_dev = 0 &rarr; 10.0 ({lang === "en" ? "perfect consistency" : "완벽한 일관성"}) | std_dev &ge; 3 &rarr; ~0.0</p>
       </div>
     </div>
   );
 }
 
-function CompositeRankBlock() {
+function CompositeRankBlock({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-300 mb-2">Composite Rank Score</h3>
-      <p className="text-gray-400 text-xs mb-3">
-        가중 점수(80%)와 일관성 점수(20%)를 결합한 최종 비교 순위 점수입니다.
-      </p>
+      <h3 className="text-sm font-semibold text-gray-300 mb-2">{L.compositeTitle}</h3>
+      <p className="text-gray-400 text-xs mb-3">{L.compositeDesc}</p>
       <div className="rounded p-3 font-mono text-xs text-gray-300" style={{ background: "#1A1A1A" }}>
         composite_rank = weighted_score * 0.8 + consistency * 0.2
       </div>
@@ -361,13 +355,14 @@ function CompositeRankBlock() {
 
 /* ── Data source info ── */
 
-function DataSourceInfo() {
+function DataSourceInfo({ lang }: { lang: Lang }) {
+  const L = PAGE_LABELS[lang];
   return (
     <section className="rounded-lg p-4 text-xs text-gray-500" style={{ background: "#1A1A1A80" }}>
-      <p className="font-semibold text-gray-400 mb-1">Data Source</p>
-      <p>Claude Code JSONL 세션 로그: <code>~/.claude/projects/&lt;hash&gt;/&lt;session&gt;.jsonl</code></p>
-      <p className="mt-1">서브에이전트 로그: <code>&lt;session-dir&gt;/subagents/agent-&lt;id&gt;.jsonl</code></p>
-      <p className="mt-1"><code>omas scan</code>으로 전체 스캔 &rarr; <code>omas export</code>로 JSON 생성</p>
+      <p className="font-semibold text-gray-400 mb-1">{L.dataSourceTitle}</p>
+      <p>Claude Code JSONL {lang === "en" ? "session logs" : "세션 로그"}: <code>~/.claude/projects/&lt;hash&gt;/&lt;session&gt;.jsonl</code></p>
+      <p className="mt-1">{lang === "en" ? "Sub-agent logs" : "서브에이전트 로그"}: <code>&lt;session-dir&gt;/subagents/agent-&lt;id&gt;.jsonl</code></p>
+      <p className="mt-1"><code>omas scan</code> {lang === "en" ? "to scan all sessions" : "으로 전체 스캔"} &rarr; <code>omas export</code> {lang === "en" ? "to generate JSON" : "로 JSON 생성"}</p>
     </section>
   );
 }
@@ -375,21 +370,23 @@ function DataSourceInfo() {
 /* ── Page ── */
 
 export default function ScoringGuidePage() {
+  const [lang, setLang] = useState<Lang>("en");
+
   return (
     <div className="space-y-8 max-w-4xl">
-      <ScoringHero />
-      <OverallScoreCard />
+      <ScoringHero lang={lang} onLangChange={setLang} />
+      <OverallScoreCard lang={lang} />
 
       <div className="grid grid-cols-1 gap-6">
-        {DIMENSIONS.map((dim) => (
+        {DIMENSIONS[lang].map((dim) => (
           <DimensionCard key={dim.title} dim={dim} />
         ))}
       </div>
 
-      <ThreadTypeSection />
-      <RoadmapSection />
-      <FairComparisonSection />
-      <DataSourceInfo />
+      <ThreadTypeSection lang={lang} />
+      <RoadmapSection lang={lang} />
+      <FairComparisonSection lang={lang} />
+      <DataSourceInfo lang={lang} />
     </div>
   );
 }

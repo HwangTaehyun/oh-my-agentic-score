@@ -19,8 +19,8 @@ def decode_project_hash(project_hash: str) -> str:
     - '--' encodes a hidden directory '/.'
 
     Examples:
-        '-Users-taehyun-github-foo' → '/Users/taehyun/github/foo'
-        '-Users-taehyun--claude' → '/Users/taehyun/.claude'
+        '-Users-john-github-foo' → '/Users/john/github/foo'
+        '-Users-john--claude' → '/Users/john/.claude'
     """
     if not project_hash:
         return ""
