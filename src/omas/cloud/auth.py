@@ -214,7 +214,7 @@ def start_oauth_flow(
     console.print("\n[bold]Authenticating with GitHub...[/bold]\n")
 
     port = _find_free_port()
-    redirect_uri = f"http://localhost:{port}/callback"
+    redirect_uri = f"http://localhost:{port}/auth/callback"
 
     _open_browser_for_auth(github_client_id, redirect_uri)
 
