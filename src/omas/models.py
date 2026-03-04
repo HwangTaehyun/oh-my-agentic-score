@@ -147,6 +147,9 @@ class TrustMetrics(BaseModel):
     penalized_ask_user_count: int = 0  # AskUser outside plan mode (penalized)
     autonomous_tool_call_pct: float = 0.0
     z_thread_score: float = 0.0
+    # Trivial delegation: human msgs followed by ≤ TRIVIAL_DELEGATION_THRESHOLD tool calls
+    trivial_delegation_count: int = 0  # human msgs classified as trivial delegation
+    effective_human_count: int = 0  # human msgs actually used in trust ratio
 
 
 class SessionMetrics(BaseModel):
@@ -180,10 +183,16 @@ class ProjectSummary(BaseModel):
     project_hash: str
     session_count: int = 0
     total_tool_calls: int = 0
+    # Raw dimension averages (for data export / cloud upload)
     avg_parallelism_score: float = 0.0
     avg_autonomy_score: float = 0.0
     avg_density_score: float = 0.0
     avg_trust_score: float = 0.0
+    # Normalized dimension averages (0-10 scale, used for dashboard display)
+    avg_parallelism_norm: float = 0.0
+    avg_autonomy_norm: float = 0.0
+    avg_density_norm: float = 0.0
+    avg_trust_norm: float = 0.0
     avg_overall_score: float = 0.0
     dominant_thread_type: ThreadType = ThreadType.BASE
     thread_type_distribution: dict[str, int] = Field(default_factory=dict)

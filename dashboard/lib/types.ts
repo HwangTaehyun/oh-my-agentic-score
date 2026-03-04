@@ -34,8 +34,13 @@ export interface TrustMetrics {
   tool_calls_per_human_message: number;
   assistant_per_human_ratio: number;
   ask_user_count: number;
+  plan_mode_ask_user_count?: number;
+  penalized_ask_user_count?: number;
   autonomous_tool_call_pct: number;
   z_thread_score: number;
+  // Trivial delegation: human msgs followed by ≤ TRIVIAL_DELEGATION_THRESHOLD tool calls
+  trivial_delegation_count: number;
+  effective_human_count: number;
 }
 
 export interface SessionMetrics {
@@ -61,10 +66,16 @@ export interface ProjectSummary {
   project_hash: string;
   session_count: number;
   total_tool_calls: number;
+  // Raw dimension averages
   avg_parallelism_score: number;
   avg_autonomy_score: number;
   avg_density_score: number;
   avg_trust_score: number;
+  // Normalized dimension averages (0-10 scale, matches overall_score formula)
+  avg_parallelism_norm: number;
+  avg_autonomy_norm: number;
+  avg_density_norm: number;
+  avg_trust_norm: number;
   avg_overall_score: number;
   dominant_thread_type: ThreadType;
   thread_type_distribution: Record<string, number>;

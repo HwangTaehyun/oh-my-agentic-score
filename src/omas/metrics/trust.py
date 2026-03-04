@@ -17,7 +17,8 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
-from omas.models import SessionData, TrustMetrics
+from omas.config import TRIVIAL_DELEGATION_THRESHOLD
+from omas.models import SessionData, ToolCall, TrustMetrics, UserMessage
 
 
 def _build_plan_mode_windows(
@@ -60,6 +61,50 @@ def _is_in_plan_mode(
     return False
 
 
+def _count_effective_human_messages(
+    human_msgs: list[UserMessage],
+    tool_calls: list[ToolCall],
+    threshold: int = TRIVIAL_DELEGATION_THRESHOLD,
+) -> tuple[int, int]:
+    """Count effective human messages excluding trivial delegations.
+
+    A "trivial delegation" is a human message followed by ≤ *threshold*
+    tool calls before the next human message.  These are simple requests
+    like "run tests" or "build it" that do not represent genuine human
+    checkpoints / interventions.
+
+    Returns:
+        (effective_human_count, trivial_delegation_count)
+        effective_human_count is always ≥ 1 to avoid division-by-zero.
+    """
+    if not human_msgs:
+        return 0, 0
+
+    sorted_humans = sorted(human_msgs, key=lambda m: m.timestamp)
+    sorted_tools = sorted(tool_calls, key=lambda t: t.timestamp)
+    trivial_count = 0
+
+    for i, hmsg in enumerate(sorted_humans):
+        start = hmsg.timestamp
+        end = sorted_humans[i + 1].timestamp if i + 1 < len(sorted_humans) else None
+
+        # Count tool calls in the segment after this human message
+        if end is not None:
+            segment_tools = sum(
+                1 for t in sorted_tools if start < t.timestamp < end
+            )
+        else:
+            segment_tools = sum(
+                1 for t in sorted_tools if t.timestamp > start
+            )
+
+        if segment_tools <= threshold:
+            trivial_count += 1
+
+    effective = len(sorted_humans) - trivial_count
+    return max(effective, 1), trivial_count  # floor at 1 to prevent div-by-zero
+
+
 def compute_trust(data: SessionData) -> TrustMetrics:
     """Compute trust metrics for a session.
 
@@ -74,8 +119,13 @@ def compute_trust(data: SessionData) -> TrustMetrics:
     total_calls = len(data.tool_calls)
     assistant_count = data.assistant_message_count
 
-    # Tool calls per human message
-    calls_per_human = total_calls / max(human_count, 1)
+    # Exclude trivial delegations (≤ N tool calls) from human count
+    effective_human_count, trivial_count = _count_effective_human_messages(
+        data.human_messages, data.tool_calls,
+    )
+
+    # Tool calls per *effective* human message
+    calls_per_human = total_calls / max(effective_human_count, 1)
 
     # Assistant to human ratio
     asst_per_human = assistant_count / max(human_count, 1)
@@ -126,4 +176,6 @@ def compute_trust(data: SessionData) -> TrustMetrics:
         penalized_ask_user_count=penalized_ask_user,
         autonomous_tool_call_pct=round(autonomous_pct, 2),
         z_thread_score=round(z_score, 2),
+        trivial_delegation_count=trivial_count,
+        effective_human_count=effective_human_count,
     )

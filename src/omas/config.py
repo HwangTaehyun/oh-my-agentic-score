@@ -1,5 +1,6 @@
 """Configuration constants and threshold defaults."""
 
+import os
 from pathlib import Path
 
 # Claude Code data paths
@@ -12,6 +13,18 @@ OMAS_DIR = Path.home() / ".omas"
 SQLITE_DB_PATH = OMAS_DIR / "metrics.db"
 REPORTS_DIR = OMAS_DIR / "reports"
 UPLOAD_QUEUE_PATH = OMAS_DIR / "upload_queue.json"
+
+# OMAS Cloud server URL — single source of truth.
+#
+# Priority (highest → lowest):
+#   1. OMAS_SERVER_URL env var (runtime override, e.g. .env for local dev)
+#   2. _PRODUCTION_SERVER_URL (baked in at CI/CD build time via sed)
+#   3. Hardcoded fallback below
+#
+# CI/CD injects the production URL by replacing the placeholder value of
+# _PRODUCTION_SERVER_URL before `uv build`.  See .github/workflows/release.yml.
+_PRODUCTION_SERVER_URL = "https://api.oh-my-agentic-coding.com"  # CI/CD replaces this line
+DEFAULT_SERVER_URL = os.environ.get("OMAS_SERVER_URL", _PRODUCTION_SERVER_URL)
 
 # Thread classification thresholds
 Z_THREAD_MAX_HUMAN_MESSAGES = 1
@@ -28,6 +41,12 @@ P_THREAD_MIN_CONCURRENT = 2
 
 C_THREAD_MIN_HUMAN_MESSAGES = 3
 C_THREAD_MIN_TOOLS_PER_GAP = 3
+
+# Trivial delegation threshold: if a human message is followed by
+# ≤ this many tool calls before the next human message, it is
+# considered a trivial delegation (e.g. "run tests") and excluded
+# from the effective human message count in the Fewer (F) score.
+TRIVIAL_DELEGATION_THRESHOLD = 5
 
 # Automated message filters (content patterns that indicate non-human messages)
 AUTOMATED_MESSAGE_PATTERNS = [
