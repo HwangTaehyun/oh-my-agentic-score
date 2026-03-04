@@ -48,6 +48,9 @@ C_THREAD_MIN_TOOLS_PER_GAP = 3
 # from the effective human message count in the Fewer (F) score.
 TRIVIAL_DELEGATION_THRESHOLD = 5
 
+# AI-written lines bonus: lines needed for full +1.0 density bonus
+AI_LINES_FULL_SCORE = 50_000
+
 # Automated message filters (content patterns that indicate non-human messages)
 AUTOMATED_MESSAGE_PATTERNS = [
     "<observed_from_primary_session>",

@@ -52,26 +52,34 @@ def _is_human_message(record: dict) -> bool:
     return True
 
 
-def _extract_tool_calls(record: dict, timestamp: datetime) -> list[ToolCall]:
-    """Extract tool calls from an assistant message."""
+def _extract_tool_calls(record: dict, timestamp: datetime) -> tuple[list[ToolCall], int]:
+    """Extract tool calls from an assistant message.
+
+    Returns:
+        (tool_calls, ai_written_lines) — lines counted from Write/Edit/MultiEdit inputs.
+    """
     calls = []
+    written_lines = 0
     message = record.get("message", {})
     content_items = message.get("content", [])
 
     if not isinstance(content_items, list):
-        return calls
+        return calls, 0
 
     for item in content_items:
         if isinstance(item, dict) and item.get("type") == "tool_use":
             name = item.get("name", "unknown")
             tool_id = item.get("id", "")
+            tool_input = item.get("input", {})
 
             # Check if this is an Agent (sub-agent) call
             is_subagent = name == "Agent"
             agent_id = None
             if is_subagent:
-                agent_input = item.get("input", {})
-                agent_id = agent_input.get("name", None)
+                agent_id = tool_input.get("name", None)
+
+            # Count AI-written lines from file-writing tools
+            written_lines += _count_written_lines(name, tool_input)
 
             calls.append(
                 ToolCall(
@@ -83,7 +91,28 @@ def _extract_tool_calls(record: dict, timestamp: datetime) -> list[ToolCall]:
                 )
             )
 
-    return calls
+    return calls, written_lines
+
+
+def _count_written_lines(tool_name: str, tool_input: dict) -> int:
+    """Count lines of code written by AI from Write/Edit/MultiEdit tool inputs."""
+    try:
+        if tool_name == "Write":
+            content = tool_input.get("content", "")
+            return len(content.splitlines()) if content else 0
+        elif tool_name == "Edit":
+            new_string = tool_input.get("new_string", "")
+            return len(new_string.splitlines()) if new_string else 0
+        elif tool_name == "MultiEdit":
+            edits = tool_input.get("edits", [])
+            return sum(
+                len(e.get("new_string", "").splitlines())
+                for e in edits
+                if isinstance(e, dict)
+            )
+    except (AttributeError, TypeError):
+        pass
+    return 0
 
 
 def _extract_token_usage(record: dict) -> TokenUsage:
@@ -163,8 +192,9 @@ def _handle_assistant_record(record: dict, ts, data: SessionData, model_name: st
     """Process an assistant-type record. Returns updated model name."""
     data.assistant_message_count += 1
     if ts:
-        calls = _extract_tool_calls(record, ts)
+        calls, written_lines = _extract_tool_calls(record, ts)
         data.tool_calls.extend(calls)
+        data.ai_written_lines += written_lines
         if len(calls) > data.peak_parallel_tools_in_message:
             data.peak_parallel_tools_in_message = len(calls)
 

@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS session_metrics (
     max_sub_agent_depth INTEGER,
     tokens_per_minute REAL,
     b_thread_score REAL,
+    ai_written_lines INTEGER,
+    ai_line_bonus REAL,
 
     -- Fewer (Trust)
     tool_calls_per_human REAL,
@@ -76,8 +78,10 @@ class MetricsStore:
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(CREATE_TABLE_SQL)
-            # Migration: add tool_breakdown column to existing databases
+            # Migration: add columns to existing databases
             self._migrate_add_column(conn, "tool_breakdown", "TEXT")
+            self._migrate_add_column(conn, "ai_written_lines", "INTEGER")
+            self._migrate_add_column(conn, "ai_line_bonus", "REAL")
 
     @staticmethod
     def _migrate_add_column(conn, column_name: str, column_type: str):
@@ -104,6 +108,7 @@ class MetricsStore:
                     max_consecutive_assistant_turns, l_thread_score,
                     tool_calls_per_minute, max_sub_agent_depth,
                     tokens_per_minute, b_thread_score,
+                    ai_written_lines, ai_line_bonus,
                     tool_calls_per_human, assistant_per_human_ratio,
                     ask_user_count, autonomous_tool_call_pct, z_thread_score,
                     tool_breakdown,
@@ -112,7 +117,7 @@ class MetricsStore:
                     ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
-                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?,
                     ?, ?
@@ -143,6 +148,8 @@ class MetricsStore:
                     metrics.density.max_sub_agent_depth,
                     metrics.density.tokens_per_minute,
                     metrics.density.b_thread_score,
+                    metrics.density.ai_written_lines,
+                    metrics.density.ai_line_bonus,
                     # Trust
                     metrics.trust.tool_calls_per_human_message,
                     metrics.trust.assistant_per_human_ratio,
@@ -207,6 +214,15 @@ class MetricsStore:
             return result[0] if result else 0
 
 
+def _safe_row_get(row: sqlite3.Row, key: str, default=None):
+    """Safely get a value from a Row, returning default if column doesn't exist."""
+    try:
+        val = row[key]
+        return val if val is not None else default
+    except (IndexError, KeyError):
+        return default
+
+
 def _row_to_metrics(row: sqlite3.Row) -> SessionMetrics:
     """Convert a SQLite row to SessionMetrics."""
     return SessionMetrics(
@@ -224,6 +240,7 @@ def _row_to_metrics(row: sqlite3.Row) -> SessionMetrics:
         density=_build_density(row),
         trust=_build_trust(row),
         tool_breakdown=_parse_tool_breakdown(row),
+        ai_written_lines=_safe_row_get(row, "ai_written_lines") or 0,
         overall_score=row["overall_score"] or 0.0,
     )
 
@@ -281,6 +298,8 @@ def _build_density(row: sqlite3.Row) -> DensityMetrics:
         total_tool_calls=row["total_tool_calls"] or 0,
         tokens_per_minute=row["tokens_per_minute"] or 0.0,
         b_thread_score=row["b_thread_score"] or 0.0,
+        ai_written_lines=_safe_row_get(row, "ai_written_lines") or 0,
+        ai_line_bonus=_safe_row_get(row, "ai_line_bonus") or 0.0,
     )
 
 

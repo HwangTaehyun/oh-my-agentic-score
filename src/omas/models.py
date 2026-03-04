@@ -91,6 +91,9 @@ class SessionData(BaseModel):
     # Peak parallel tool calls in a single assistant message
     peak_parallel_tools_in_message: int = 0
 
+    # AI-written lines of code (accumulated from Write/Edit/MultiEdit tool inputs)
+    ai_written_lines: int = 0
+
     @property
     def human_messages(self) -> list[UserMessage]:
         """Only messages typed by a human."""
@@ -135,6 +138,9 @@ class DensityMetrics(BaseModel):
     total_tool_calls: int = 0
     tokens_per_minute: float = 0.0
     b_thread_score: float = 0.0
+    # AI-written lines bonus
+    ai_written_lines: int = 0
+    ai_line_bonus: float = 0.0
 
 
 class TrustMetrics(BaseModel):
@@ -172,6 +178,9 @@ class SessionMetrics(BaseModel):
 
     # Per-tool-name usage counts (e.g., {"Read": 45, "Bash": 30, "Skill": 3})
     tool_breakdown: dict[str, int] = Field(default_factory=dict)
+
+    # AI-written lines of code (top-level shortcut from density)
+    ai_written_lines: int = 0
 
     overall_score: float = 0.0
 

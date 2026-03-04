@@ -263,9 +263,13 @@ const DIMENSIONS_EN: DimensionConfig[] = [
     subtitle: "Sub-agent scale and nesting depth",
     color: "red", accentHex: "#FF6B35", maxScore: "10+",
     formulaTitle: "Score Formula",
-    formula: [{ code: "b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)", comment: "sub-agent count × nesting depth, capped at 10" }],
-    fullScoreNote: "10/10: e.g. 5 sub-agents × depth 2 = 10, or 10 flat sub-agents × depth 1 = 10. Multiplicative — depth is the multiplier.",
-    detailTitle: "Sub-Agent Depth Detection",
+    formula: [
+      { code: "b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)", comment: "sub-agent count × nesting depth, capped at 10" },
+      { code: "line_bonus = min(ai_written_lines / 50000, 1.0)", comment: "AI-written lines bonus: linear, max +1.0 at 50K lines" },
+      { code: "b_norm = min(b_thread_score + line_bonus, 10.0)", comment: "final density score with line bonus applied" },
+    ],
+    fullScoreNote: "10/10: e.g. 5 sub-agents × depth 2 = 10, or 10 flat sub-agents × depth 1 = 10. Multiplicative — depth is the multiplier. AI-written lines add up to +1.0 bonus (50K lines = full bonus).",
+    detailTitle: "Sub-Agent Depth Detection & AI Lines Bonus",
     detail: [
       "Direct multiplication — NOT log-scaled. Raw product is capped at 10.",
       "Depth acts as a multiplier, rewarding nested agent architectures.",
@@ -276,6 +280,12 @@ const DIMENSIONS_EN: DimensionConfig[] = [
       "",
       "Detection: If a subagent's JSONL file contains agent_progress events, it's nested.",
       "Examples: 3 agents × depth 2 = 6 | 5 agents × depth 2 = 10 | 10 agents × depth 1 = 10",
+      "",
+      "AI Written Lines Bonus:",
+      "Counts lines written via Write (content), Edit (new_string), MultiEdit (edits[].new_string).",
+      "Linear bonus: 0 lines → +0.0, 5K lines → +0.1, 10K → +0.2, 50K+ → +1.0 (capped).",
+      "This is per-session, not cumulative. Typical sessions earn +0.0~0.2 bonus.",
+      "Impact on overall score: max +0.25 (since 4 dimensions are averaged).",
     ],
     examples: [
       {
@@ -308,6 +318,8 @@ const DIMENSIONS_EN: DimensionConfig[] = [
       { name: "max_sub_agent_depth", desc: "Maximum sub-agent nesting depth. 0=none, 1=flat, 2+=nested (B-thread)." },
       { name: "total_tool_calls", desc: "Total tool calls performed across the entire session." },
       { name: "tokens_per_minute", desc: "Tokens consumed per minute. (input_tokens + output_tokens) / duration." },
+      { name: "ai_written_lines", desc: "Total lines of code written by AI via Write, Edit, and MultiEdit tools in this session." },
+      { name: "ai_line_bonus", desc: "Bonus added to density score. min(ai_written_lines / 50000, 1.0). Max +1.0 at 50K lines." },
     ],
     scoring: [
       { range: "0", meaning: "No sub-agents" },
@@ -321,6 +333,7 @@ const DIMENSIONS_EN: DimensionConfig[] = [
       "Encourage deep execution trees where sub-agents spawn sub-agents.",
       "Separate code analysis → implementation → testing → review into individual sub-agents.",
       "Combine with worktree isolation for even higher density.",
+      "Write more code via Write/Edit tools to earn the AI-written lines bonus (up to +1.0).",
     ],
   },
   {
@@ -601,9 +614,13 @@ const DIMENSIONS_KO: DimensionConfig[] = [
     subtitle: "서브에이전트 규모와 중첩 깊이",
     color: "red", accentHex: "#FF6B35", maxScore: "10+",
     formulaTitle: "Score Formula",
-    formula: [{ code: "b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)", comment: "서브에이전트 수 × 중첩 깊이, cap 10" }],
-    fullScoreNote: "만점(10): 예) 5개 에이전트 × depth 2 = 10, 또는 10개 평면 에이전트 × depth 1 = 10. 곱셈 — depth가 승수 역할.",
-    detailTitle: "Sub-Agent Depth Detection (중첩 깊이 감지)",
+    formula: [
+      { code: "b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)", comment: "서브에이전트 수 × 중첩 깊이, cap 10" },
+      { code: "line_bonus = min(ai_written_lines / 50000, 1.0)", comment: "AI 작성 라인 보너스: 선형, 5만줄에서 만점 +1.0" },
+      { code: "b_norm = min(b_thread_score + line_bonus, 10.0)", comment: "라인 보너스가 적용된 최종 density 점수" },
+    ],
+    fullScoreNote: "만점(10): 예) 5개 에이전트 × depth 2 = 10, 또는 10개 평면 에이전트 × depth 1 = 10. 곱셈 — depth가 승수 역할. AI 작성 라인은 최대 +1.0 보너스 (5만줄 = 만점 보너스).",
+    detailTitle: "Sub-Agent Depth Detection & AI 작성 라인 보너스",
     detail: [
       "직접 곱셈 — log 스케일 아님. 원시 곱이 cap 10.",
       "Depth가 승수 역할을 하여, 중첩 에이전트 구조에 높은 보상을 줍니다.",
@@ -614,12 +631,20 @@ const DIMENSIONS_KO: DimensionConfig[] = [
       "",
       "감지 방법: subagent JSONL 파일 내에 agent_progress 이벤트가 있으면 중첩.",
       "예: 3 × depth 2 = 6 | 5 × depth 2 = 10 | 10 × depth 1 = 10",
+      "",
+      "AI 작성 라인 보너스:",
+      "Write (content), Edit (new_string), MultiEdit (edits[].new_string)로 작성된 라인 수를 계산.",
+      "선형 보너스: 0줄 → +0.0, 5,000줄 → +0.1, 10,000줄 → +0.2, 50,000줄+ → +1.0 (cap).",
+      "세션당 측정이며 누적이 아닙니다. 일반적인 세션에서는 +0.0~0.2 보너스.",
+      "overall 점수에 미치는 영향: 최대 +0.25 (4개 차원 평균이므로).",
     ],
     metrics: [
       { name: "tool_calls_per_minute", desc: "분당 tool call 수. total_tool_calls / max(duration_minutes, 0.1)" },
       { name: "max_sub_agent_depth", desc: "서브에이전트의 최대 중첩 깊이. 0=없음, 1=평면, 2+=중첩(B-thread)." },
       { name: "total_tool_calls", desc: "세션 전체에서 수행된 tool call 총 수." },
       { name: "tokens_per_minute", desc: "분당 소비된 토큰 수. (input_tokens + output_tokens) / duration." },
+      { name: "ai_written_lines", desc: "이 세션에서 Write, Edit, MultiEdit tool로 AI가 작성한 총 코드 라인 수." },
+      { name: "ai_line_bonus", desc: "density 점수에 추가되는 보너스. min(ai_written_lines / 50000, 1.0). 5만줄에서 최대 +1.0." },
     ],
     scoring: [
       { range: "0", meaning: "서브에이전트 없음" },
@@ -659,6 +684,7 @@ const DIMENSIONS_KO: DimensionConfig[] = [
       "서브에이전트가 다시 서브에이전트를 생성하는 깊은 실행 트리를 유도하세요.",
       "코드 분석 → 구현 → 테스트 → 리뷰를 각각 서브에이전트로 분리하세요.",
       "Worktree isolation과 병행하면 밀도가 더 높아집니다.",
+      "Write/Edit tool로 더 많은 코드를 작성하면 AI 라인 보너스(최대 +1.0)를 받을 수 있습니다.",
     ],
   },
   {

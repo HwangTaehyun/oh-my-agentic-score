@@ -83,6 +83,37 @@ b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)
 | 1 | Has sub-agents, none spawn their own |
 | 2+ | Sub-agents spawning sub-agents (true B-thread) |
 
+### AI Written Lines Bonus
+
+OMAS counts the number of lines written by AI through code-writing tools and adds a small bonus to the density score.
+
+**Formula:**
+
+```
+line_bonus = min(ai_written_lines / 50000, 1.0)
+b_norm = min(b_thread_score + line_bonus, 10.0)
+```
+
+**How lines are counted:**
+
+| Tool | Field | Counting |
+|------|-------|----------|
+| `Write` | `input.content` | `len(content.splitlines())` |
+| `Edit` | `input.new_string` | `len(new_string.splitlines())` |
+| `MultiEdit` | `input.edits[].new_string` | `sum(len(e.new_string.splitlines()))` |
+
+**Bonus reference:**
+
+| AI Written Lines | Bonus |
+|-----------------|-------|
+| 0 | +0.0 |
+| 1,000 | +0.02 |
+| 5,000 | +0.10 |
+| 10,000 | +0.20 |
+| 50,000+ | +1.0 (capped) |
+
+This is measured **per session**, not cumulative. Typical sessions earn +0.0~0.2 bonus. The maximum impact on overall score is +0.25 (since 4 dimensions are averaged).
+
 **Metrics collected:**
 
 | Metric | Description |
@@ -91,6 +122,8 @@ b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)
 | `tokens_per_minute` | Token throughput rate |
 | `max_sub_agent_depth` | Deepest nesting level |
 | `total_tool_calls` | Raw tool call count |
+| `ai_written_lines` | Total lines written by AI via Write/Edit/MultiEdit tools |
+| `ai_line_bonus` | Density bonus from AI-written lines (max +1.0) |
 
 ## Fewer (Trust Score)
 

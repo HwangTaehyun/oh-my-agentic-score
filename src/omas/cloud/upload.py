@@ -59,6 +59,8 @@ def _build_session_payloads(
             "l_thread_score": s.autonomy.l_thread_score,
             "b_thread_score": s.density.b_thread_score,
             "z_thread_score": s.trust.z_thread_score,
+            "ai_written_lines": s.ai_written_lines,
+            "ai_line_bonus": s.density.ai_line_bonus,
         })
     return payloads
 

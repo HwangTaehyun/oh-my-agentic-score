@@ -28,6 +28,8 @@ export interface DensityMetrics {
   total_tool_calls: number;
   tokens_per_minute: number;
   b_thread_score: number;
+  ai_written_lines: number;
+  ai_line_bonus: number;
 }
 
 export interface TrustMetrics {
@@ -58,6 +60,7 @@ export interface SessionMetrics {
   density: DensityMetrics;
   trust: TrustMetrics;
   tool_breakdown: Record<string, number>;
+  ai_written_lines: number;
   overall_score: number;
 }
 

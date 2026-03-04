@@ -10,6 +10,7 @@
     <a href="https://pypi.org/project/oh-my-agentic-score/"><img src="https://img.shields.io/pypi/v/oh-my-agentic-score?color=blue" alt="PyPI"></a>
     <a href="https://github.com/HwangTaehyun/oh-my-agentic-score/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
     <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python"></a>
+    <a href="https://hwangtaehyun.github.io/oh-my-agentic-score/"><img src="https://img.shields.io/badge/docs-VitePress-646CFF" alt="Docs"></a>
   </p>
 </p>
 
@@ -68,7 +69,7 @@ omas dashboard
 | **More** | P-thread | Parallel execution paths (concurrent sub-agents) |
 | **Longer** | L-thread | Autonomous work duration without human intervention |
 | **Thicker** | B-thread | Work density (sub-agent depth, tool calls per minute) |
-| **Fewer** | Z-thread | Human checkpoint reduction (trust level) |
+| **Fewer** | Z-thread | Human checkpoint reduction (trust level, trivial delegations excluded) |
 
 ### Seven Thread Types
 
@@ -198,6 +199,10 @@ uv run omas --help
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup.
+
+## Documentation
+
+Full documentation is available at **[hwangtaehyun.github.io/oh-my-agentic-score](https://hwangtaehyun.github.io/oh-my-agentic-score/)**.
 
 ## Credits
 
