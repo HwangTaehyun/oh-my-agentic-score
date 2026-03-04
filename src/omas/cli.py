@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Load .env file if present (before any env reads)
+_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+if _env_path.exists():
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _val = _line.partition("=")
+                os.environ.setdefault(_key.strip(), _val.strip())
+
 import click
 from rich.console import Console
 from rich.progress import Progress
 
-from omas.config import CLAUDE_DIR
+from omas.config import CLAUDE_DIR, DEFAULT_SERVER_URL
 from omas.display.dashboard import render_session_dashboard
 from omas.display.report import render_report
 from omas.display.trend import render_trend
@@ -317,12 +328,77 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
 
 
 @cli.command()
+@click.option("--skip-scan", is_flag=True, help="Skip session scan (use cached data)")
+@click.option("--skip-upload", is_flag=True, help="Skip cloud upload")
+@click.option(
+    "--server-url",
+    default=DEFAULT_SERVER_URL,
+    envvar="OMAS_SERVER_URL",
+    help="OMAS Cloud server URL",
+)
 @click.pass_context
-def dashboard(ctx):
-    """Export metrics and launch Next.js dashboard."""
-    # Run export first
+def dashboard(ctx, skip_scan: bool, skip_upload: bool, server_url: str):
+    """Scan sessions, upload to cloud, and launch Next.js dashboard."""
+    # Step 1: Scan sessions
+    if not skip_scan:
+        ctx.invoke(scan)
+
+    # Step 2: Export JSON for dashboard
     ctx.invoke(export)
 
+    # Step 3: Upload to cloud (background, non-blocking)
+    if not skip_upload:
+        _try_cloud_upload(server_url)
+
+    # Step 4: Launch dashboard
+    _launch_dashboard()
+
+
+def _ensure_authenticated(server_url: str) -> bool:
+    """Check auth status; if not logged in, prompt and run OAuth flow.
+
+    Returns True if authenticated (existing or just completed).
+    """
+    from omas.cloud.credentials import get_credentials
+
+    creds = get_credentials()
+    if creds and creds.get("access_token"):
+        return True
+
+    console.print("\n[yellow]Not authenticated to OMAS Cloud.[/yellow]")
+    if not click.confirm("Login now to sync scores to the cloud?", default=True):
+        console.print("[dim]Skipping cloud upload.[/dim]")
+        return False
+
+    from omas.cloud.auth import start_oauth_flow
+
+    return start_oauth_flow(server_url=server_url)
+
+
+def _try_cloud_upload(server_url: str) -> None:
+    """Ensure authenticated, then upload. Non-fatal on failure."""
+    if not _ensure_authenticated(server_url):
+        return
+
+    from omas.cloud.credentials import get_credentials
+    from omas.cloud.upload import upload_metrics
+    from omas.storage.sqlite_store import MetricsStore as _MetricsStore
+
+    creds = get_credentials()
+    store = _MetricsStore()
+    sessions = store.load_all()
+    if not sessions:
+        return
+
+    url = (creds or {}).get("server_url", server_url)
+    try:
+        upload_metrics(sessions, server_url=url)
+    except Exception as e:
+        console.print(f"[dim]Cloud upload failed: {e} (continuing locally)[/dim]")
+
+
+def _launch_dashboard() -> None:
+    """Find and start the Next.js dashboard."""
     dashboard_dir = Path(__file__).parent.parent.parent / "dashboard"
     if not dashboard_dir.exists():
         console.print(f"[red]Dashboard not found at {dashboard_dir}[/red]")
@@ -368,24 +444,33 @@ def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSumm
         type_counts = Counter(s.thread_type.value for s in proj_sessions)
         dominant = max(type_counts, key=lambda k: type_counts[k])
 
+        # Raw dimension averages
+        avg_p = _avg([s.parallelism.p_thread_score for s in proj_sessions])
+        avg_l = _avg([s.autonomy.l_thread_score for s in proj_sessions])
+        avg_b = _avg([s.density.b_thread_score for s in proj_sessions])
+        avg_f = _avg([s.trust.z_thread_score for s in proj_sessions])
+
+        # Normalized dimension averages (same formula as _compute_overall_score)
+        # All dimension scores are already 0-10 scale, just cap at 10
+        p_norm = _avg([min(s.parallelism.p_thread_score, 10.0) for s in proj_sessions])
+        l_norm = _avg([min(s.autonomy.l_thread_score, 10.0) for s in proj_sessions])
+        b_norm = _avg([min(s.density.b_thread_score, 10.0) for s in proj_sessions])
+        f_norm = _avg([min(s.trust.z_thread_score, 10.0) for s in proj_sessions])
+
         summaries.append(
             ProjectSummary(
                 project_path=proj_sessions[0].project_path,
                 project_hash=proj_sessions[0].project_hash,
                 session_count=len(proj_sessions),
                 total_tool_calls=sum(s.total_tool_calls for s in proj_sessions),
-                avg_parallelism_score=_avg(
-                    [s.parallelism.p_thread_score for s in proj_sessions]
-                ),
-                avg_autonomy_score=_avg(
-                    [s.autonomy.l_thread_score for s in proj_sessions]
-                ),
-                avg_density_score=_avg(
-                    [s.density.b_thread_score for s in proj_sessions]
-                ),
-                avg_trust_score=_avg(
-                    [s.trust.z_thread_score for s in proj_sessions]
-                ),
+                avg_parallelism_score=avg_p,
+                avg_autonomy_score=avg_l,
+                avg_density_score=avg_b,
+                avg_trust_score=avg_f,
+                avg_parallelism_norm=p_norm,
+                avg_autonomy_norm=l_norm,
+                avg_density_norm=b_norm,
+                avg_trust_norm=f_norm,
                 avg_overall_score=_avg([s.overall_score for s in proj_sessions]),
                 dominant_thread_type=ThreadType(dominant),
                 thread_type_distribution=dict(type_counts),
@@ -411,11 +496,16 @@ def auth():
 
 
 @auth.command("login")
-@click.option("--provider", type=click.Choice(["github", "google"]), default="github")
-def auth_login(provider: str):
-    """Login to OMAS Cloud via OAuth."""
-    from omas.cloud.auth import start_device_flow
-    start_device_flow(provider)
+@click.option(
+    "--server-url",
+    default=DEFAULT_SERVER_URL,
+    envvar="OMAS_SERVER_URL",
+    help="OMAS Cloud server URL",
+)
+def auth_login(server_url: str):
+    """Login to OMAS Cloud via GitHub OAuth."""
+    from omas.cloud.auth import start_oauth_flow
+    start_oauth_flow(server_url=server_url)
 
 
 @auth.command("logout")
@@ -430,24 +520,68 @@ def auth_logout():
 def auth_status():
     """Show current authentication status."""
     from omas.cloud.credentials import get_credentials
+
     creds = get_credentials()
-    if creds:
-        console.print(f"[green]Authenticated as: {creds.get('username', 'unknown')}[/green]")
-        console.print(f"Provider: {creds.get('provider', 'unknown')}")
-    else:
+    if not creds:
         console.print("[yellow]Not authenticated. Run 'omas auth login'.[/yellow]")
+        return
+
+    user = creds.get("user", {})
+    username = user.get("username", "unknown")
+    display_name = user.get("display_name", user.get("displayName", username))
+    server_url = creds.get("server_url", "unknown")
+
+    console.print(f"[green]Authenticated as: {display_name}[/green]  (@{username})")
+    console.print(f"Server: {server_url}")
+    console.print(f"Token: {'present' if creds.get('access_token') else 'missing'}")
 
 
 @cli.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be uploaded without uploading")
-@click.pass_context
-def upload(ctx, dry_run: bool):
+@click.option(
+    "--server-url",
+    default=DEFAULT_SERVER_URL,
+    envvar="OMAS_SERVER_URL",
+    help="OMAS Cloud server URL",
+)
+def upload(dry_run: bool, server_url: str):
     """Upload metrics to OMAS Cloud."""
     from omas.cloud.upload import upload_metrics
     from omas.storage.sqlite_store import MetricsStore as _MetricsStore
+
     store = _MetricsStore()
     sessions = store.load_all()
     if not sessions:
         console.print("[yellow]No data to upload. Run 'omas scan' first.[/yellow]")
         return
-    upload_metrics(sessions, dry_run=dry_run)
+    upload_metrics(sessions, dry_run=dry_run, server_url=server_url)
+
+
+@cli.command("cloud-status")
+@click.option(
+    "--server-url",
+    default=DEFAULT_SERVER_URL,
+    envvar="OMAS_SERVER_URL",
+    help="OMAS Cloud server URL",
+)
+def cloud_status(server_url: str):
+    """Check OMAS Cloud server connectivity and stats."""
+    from omas.cloud.api_client import ConnectRPCError, OmasCloudClient
+
+    client = OmasCloudClient(base_url=server_url)
+
+    # Health check
+    try:
+        health = client.health()
+        console.print(f"[green]Server: {server_url} — {health.get('status', 'ok')}[/green]")
+    except Exception:
+        console.print(f"[red]Cannot connect to {server_url}[/red]")
+        return
+
+    # Landing stats (public, no auth needed)
+    try:
+        stats = client.get_landing_stats()
+        console.print(f"  Users:    {stats.get('total_users', stats.get('totalUsers', 0))}")
+        console.print(f"  Sessions: {stats.get('total_sessions', stats.get('totalSessions', 0))}")
+    except ConnectRPCError as e:
+        console.print(f"  [dim]Stats unavailable: {e.message}[/dim]")

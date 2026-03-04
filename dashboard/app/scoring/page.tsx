@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   DimensionConfig,
+  ExampleDef,
   Lang,
   DIMENSIONS,
   THREAD_TYPES,
@@ -84,7 +85,16 @@ function DimensionCard({ dim }: { dim: DimensionConfig }) {
         <p className="text-sm text-gray-400">{dim.subtitle}</p>
       </div>
       <FormulaBlock title={dim.formulaTitle} lines={dim.formula} colorClass={tc} />
+      {dim.fullScoreNote && (
+        <div className={`${bg} rounded p-3 flex items-start gap-2`}>
+          <span className={`${tc} text-sm shrink-0`}>★</span>
+          <p className={`text-xs font-mono ${tc}`}>{dim.fullScoreNote}</p>
+        </div>
+      )}
       <DetailBlock title={dim.detailTitle} lines={dim.detail} />
+      {dim.examples && dim.examples.length > 0 && (
+        <ExamplesBlock examples={dim.examples} colorClass={tc} bgClass={bg} />
+      )}
       {dim.referenceTable && (
         <ReferenceGrid title={dim.referenceTable.title} rows={dim.referenceTable.rows} colorClass={tc} bgClass={bg} />
       )}
@@ -133,6 +143,35 @@ function DetailBlock({ title, lines }: { title: string; lines: string[] }) {
             </p>
           ),
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Examples block ── */
+
+function ExamplesBlock({ examples, colorClass, bgClass }: {
+  examples: ExampleDef[];
+  colorClass: string;
+  bgClass: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-gray-300 mb-2">Examples</h3>
+      <div className="space-y-3">
+        {examples.map((ex, i) => (
+          <div key={i} className="rounded p-3" style={{ background: "#1A1A1A" }}>
+            <p className={`text-xs font-semibold mb-1.5 ${colorClass}`}>{ex.title}</p>
+            <div className="space-y-0.5 mb-2">
+              {ex.lines.map((line, j) => (
+                <p key={j} className="text-xs text-gray-400 font-mono">{line}</p>
+              ))}
+            </div>
+            <div className={`${bgClass} rounded px-2 py-1 inline-block`}>
+              <code className={`text-xs font-bold ${colorClass}`}>{ex.result}</code>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

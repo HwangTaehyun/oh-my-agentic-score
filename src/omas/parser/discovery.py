@@ -13,25 +13,114 @@ from omas.config import CLAUDE_PROJECTS_DIR
 def decode_project_hash(project_hash: str) -> str:
     """Convert a project directory hash to a human-readable path.
 
-    Rules (derived from real Claude Code data):
-    - Leading '-' becomes '/'
-    - Each '-' becomes '/'
-    - '--' encodes a hidden directory '/.'
+    Claude Code encodes project paths by replacing '/' with '-' and '/.' with '--'.
+    The challenge is that directory names themselves can contain hyphens
+    (e.g., 'measure-ai-thread-capability'), so naive replacement breaks them.
+
+    Strategy:
+        1. Handle '--' (hidden dirs like '.claude') first
+        2. Split remaining segments by '-'
+        3. Greedily reconstruct by checking filesystem existence at each step
+        4. Fall back to naive decode if path doesn't exist on this machine
 
     Examples:
         '-Users-john-github-foo' → '/Users/john/github/foo'
         '-Users-john--claude' → '/Users/john/.claude'
+        '-Users-john-github-my-project' → '/Users/john/github/my-project'
     """
     if not project_hash:
         return ""
 
-    # Replace '--' with a placeholder first (hidden directory marker)
+    # Try filesystem-aware decode first
+    resolved = _decode_with_filesystem(project_hash)
+    if resolved:
+        return resolved
+
+    # Fallback: naive decode (for paths not on this machine)
     result = project_hash.replace("--", "/<DOT>")
-    # Replace remaining '-' with '/'
     result = result.replace("-", "/")
-    # Restore hidden directory markers
     result = result.replace("/<DOT>", "/.")
     return result
+
+
+# Cache to avoid repeated filesystem lookups during a single scan
+_decode_cache: dict[str, str] = {}
+
+
+def _decode_with_filesystem(project_hash: str) -> str | None:
+    """Decode project hash by greedily checking filesystem existence.
+
+    Splits the hash into segments and tries to join them with hyphens,
+    checking at each step whether the resulting directory exists.
+
+    Returns the resolved path, or None if it cannot be determined.
+    """
+    if project_hash in _decode_cache:
+        return _decode_cache[project_hash]
+
+    # Step 1: Handle '--' (hidden directory marker '/.') by replacing with a
+    # unique placeholder that won't collide with normal segments
+    normalized = project_hash.replace("--", "-\x00DOT\x00")
+
+    # Step 2: Split by '-' (first element is empty because hash starts with '-')
+    parts = normalized.split("-")
+    if parts and parts[0] == "":
+        parts = parts[1:]
+
+    if not parts:
+        return None
+
+    # Step 3: Restore hidden dir markers
+    restored_parts = []
+    for p in parts:
+        if p == "\x00DOT\x00":
+            # This segment was a hidden dir prefix — merge with next as '.'
+            if restored_parts:
+                restored_parts[-1] = restored_parts[-1] + "/."
+            else:
+                restored_parts.append(".")
+        else:
+            restored_parts.append(p)
+
+    # Step 4: Greedy filesystem-based reconstruction
+    current_path = Path("/")
+    result_segments: list[str] = []
+    buffer = ""
+
+    for i, part in enumerate(restored_parts):
+        if buffer:
+            candidate = f"{buffer}-{part}"
+        else:
+            candidate = part
+
+        candidate_path = current_path / candidate
+        remaining = restored_parts[i + 1:]
+
+        if candidate_path.exists():
+            # This segment exists — commit it
+            result_segments.append(candidate)
+            current_path = candidate_path
+            buffer = ""
+        elif remaining:
+            # Doesn't exist yet — buffer and try combining with next segment
+            buffer = candidate
+        else:
+            # Last segment — commit whatever we have
+            result_segments.append(candidate)
+            buffer = ""
+
+    if buffer:
+        result_segments.append(buffer)
+
+    resolved = "/" + "/".join(result_segments)
+
+    # Validate: only cache if the full path exists
+    if Path(resolved).exists():
+        _decode_cache[project_hash] = resolved
+        return resolved
+
+    # If full path doesn't exist, clear cache entry and return None
+    return None
 
 
 def encode_project_path(project_path: str) -> str:

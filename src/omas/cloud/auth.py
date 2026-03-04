@@ -1,230 +1,261 @@
-"""OAuth Device Flow authentication for OMAS Cloud.
+"""OAuth authentication for OMAS Cloud.
 
-Implements the standard OAuth 2.0 Device Authorization Grant (RFC 8628).
-Works like `gh auth login` — gives the user a URL + code, polls until authorized.
+Implements the standard OAuth 2.0 Authorization Code Flow for CLI:
+1. Start a temporary local HTTP server on a random port
+2. Open browser to GitHub OAuth authorize URL
+3. User authorizes → GitHub redirects to localhost with ?code=XXX
+4. CLI captures the code
+5. CLI sends code to OMAS server's LoginWithGitHub (Connect-RPC)
+6. Server exchanges code for GitHub token, creates user, returns JWT
+7. CLI stores JWT tokens in OS keyring
+
+This is the same pattern used by `gh auth login` and similar CLI tools.
 """
 
 from __future__ import annotations
 
-import time
+import http.server
+import logging
+import socket
+import urllib.parse
 import webbrowser
+from typing import Optional
 
-import requests
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
+from omas.cloud.api_client import ConnectRPCError, OmasCloudClient
 from omas.cloud.credentials import save_credentials
+from omas.config import DEFAULT_SERVER_URL
 
+logger = logging.getLogger(__name__)
 console = Console()
 
-# Cloud API base URL (configurable for self-hosted instances)
-OMAS_CLOUD_URL = "https://api.omas.dev"
+# The GitHub OAuth App client_id must match the server's APP_GITHUB_CLIENT_ID.
+# This is the public client_id (safe to embed in CLI).
+# The client_secret stays on the server side only.
+DEFAULT_GITHUB_CLIENT_ID = "Ov23liuJVeWlvy5TgK2V"
 
-# OAuth app credentials (public client IDs — safe to embed in CLI)
-OAUTH_APPS = {
-    "github": {
-        "client_id": "Ov23liuJVeWlvy5TgK2V",
-        "device_auth_url": "https://github.com/login/device/code",
-        "token_url": "https://github.com/login/oauth/access_token",
-        "user_api_url": "https://api.github.com/user",
-        "scopes": "read:user user:email",
-    },
-    "google": {
-        "client_id": "XXXXXXXXXXXX.apps.googleusercontent.com",  # TODO: Replace after registering
-        "device_auth_url": "https://oauth2.googleapis.com/device/code",
-        "token_url": "https://oauth2.googleapis.com/token",
-        "user_api_url": "https://www.googleapis.com/oauth2/v2/userinfo",
-        "scopes": "openid email profile",
-    },
-}
+# GitHub OAuth endpoints
+GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 
 
-def _request_device_code(provider: str) -> dict | None:
-    """Step 1: Request a device code from the OAuth provider.
+class _OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
+    """HTTP handler that captures the OAuth callback ?code=... parameter."""
 
-    Returns dict with device_code, user_code, verification_uri, interval, expires_in.
+    code: Optional[str] = None
+    error: Optional[str] = None
+
+    def do_GET(self) -> None:
+        """Handle the OAuth callback redirect."""
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+
+        if "code" in params:
+            _OAuthCallbackHandler.code = params["code"][0]
+            self._respond(
+                200,
+                "<html><body style='font-family:monospace;text-align:center;padding:60px'>"
+                "<h2>Authentication successful!</h2>"
+                "<p>You can close this tab and return to the terminal.</p>"
+                "</body></html>",
+            )
+        elif "error" in params:
+            _OAuthCallbackHandler.error = params.get("error_description", params["error"])[0]
+            self._respond(
+                400,
+                f"<html><body style='font-family:monospace;text-align:center;padding:60px'>"
+                f"<h2>Authentication failed</h2>"
+                f"<p>{_OAuthCallbackHandler.error}</p>"
+                f"</body></html>",
+            )
+        else:
+            self._respond(400, "<html><body><p>Missing code parameter</p></body></html>")
+
+    def _respond(self, status: int, body: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def log_message(self, format: str, *args: object) -> None:  # type: ignore[override]
+        """Suppress default HTTP server logging."""
+        _ = format, args  # unused
+
+
+def _find_free_port() -> int:
+    """Find a free TCP port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_for_callback(port: int) -> Optional[str]:
+    """Start local HTTP server and wait for OAuth callback.
+
+    Returns the authorization code, or None on timeout/error.
     """
-    config = OAUTH_APPS[provider]
+    _OAuthCallbackHandler.code = None
+    _OAuthCallbackHandler.error = None
 
-    try:
-        resp = requests.post(
-            config["device_auth_url"],
-            data={
-                "client_id": config["client_id"],
-                "scope": config["scopes"],
-            },
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except requests.RequestException as e:
-        console.print(f"[red]Failed to request device code: {e}[/red]")
+    server = http.server.HTTPServer(("127.0.0.1", port), _OAuthCallbackHandler)
+    server.timeout = 120  # 2 minute timeout
+
+    with console.status("[bold green]Waiting for browser authorization...[/bold green]"):
+        server.handle_request()
+
+    server.server_close()
+
+    if _OAuthCallbackHandler.error:
+        console.print(f"[red]Authorization failed: {_OAuthCallbackHandler.error}[/red]")
         return None
 
-
-def _poll_for_token(provider: str, device_code: str, interval: int = 5, expires_in: int = 900) -> str | None:
-    """Step 3: Poll the token endpoint until the user authorizes.
-
-    Returns the access token string, or None on failure/timeout.
-    """
-    config = OAUTH_APPS[provider]
-    start_time = time.time()
-
-    grant_type = "urn:ietf:params:oauth:grant-type:device_code"
-
-    with console.status("[bold green]Waiting for browser authorization...[/bold green]", spinner="dots"):
-        while time.time() - start_time < expires_in:
-            time.sleep(interval)
-
-            try:
-                resp = requests.post(
-                    config["token_url"],
-                    data={
-                        "client_id": config["client_id"],
-                        "device_code": device_code,
-                        "grant_type": grant_type,
-                    },
-                    headers={"Accept": "application/json"},
-                    timeout=10,
-                )
-                data = resp.json()
-            except requests.RequestException:
-                continue
-
-            # Success — token received
-            if "access_token" in data:
-                return data["access_token"]
-
-            error = data.get("error", "")
-
-            if error == "authorization_pending":
-                # User hasn't authorized yet, keep polling
-                continue
-            elif error == "slow_down":
-                # Server asks us to slow down
-                interval += 5
-                continue
-            elif error == "expired_token":
-                console.print("[red]Device code expired. Please try again.[/red]")
-                return None
-            elif error == "access_denied":
-                console.print("[red]Authorization denied by user.[/red]")
-                return None
-            else:
-                console.print(f"[red]Unexpected error: {error}[/red]")
-                return None
-
-    console.print("[red]Timed out waiting for authorization.[/red]")
-    return None
-
-
-def _fetch_user_info(provider: str, token: str) -> dict | None:
-    """Fetch user profile from the provider API using the access token."""
-    config = OAUTH_APPS[provider]
-
-    try:
-        resp = requests.get(
-            config["user_api_url"],
-            headers={
-                "Authorization": f"Bearer {token}" if provider == "google" else f"token {token}",
-                "Accept": "application/json",
-            },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except requests.RequestException as e:
-        console.print(f"[yellow]Warning: Could not fetch user info: {e}[/yellow]")
+    if not _OAuthCallbackHandler.code:
+        console.print("[red]No authorization code received. Timed out or cancelled.[/red]")
         return None
 
+    return _OAuthCallbackHandler.code
 
-def start_device_flow(provider: str = "github") -> bool:
-    """Start OAuth Device Flow for the given provider.
 
-    Flow:
-    1. Request device code from provider
-    2. Display verification URL + user code
-    3. Open browser automatically
-    4. Poll until user completes authorization
-    5. Fetch user profile
-    6. Save credentials to OS keyring
-
-    Returns True if authentication succeeded.
-    """
-    if provider not in OAUTH_APPS:
-        console.print(f"[red]Unknown provider: {provider}[/red]")
-        return False
-
-    console.print(f"\n[bold]Authenticating with {provider.title()}...[/bold]\n")
-
-    # Step 1: Request device code
-    device_data = _request_device_code(provider)
-    if not device_data:
-        return False
-
-    user_code = device_data.get("user_code", "")
-    verification_uri = device_data.get("verification_uri", device_data.get("verification_url", ""))
-    device_code = device_data.get("device_code", "")
-    interval = device_data.get("interval", 5)
-    expires_in = device_data.get("expires_in", 900)
-
-    if not user_code or not verification_uri or not device_code:
-        console.print("[red]Invalid response from provider.[/red]")
-        return False
-
-    # Step 2: Display the code and URL to the user
-    code_display = Text(user_code, style="bold green")
-
-    panel_content = Text.assemble(
-        ("First, copy your one-time code: ", ""),
-        code_display,
-        ("\n\n", ""),
-        ("Then open: ", ""),
-        (verification_uri, "bold underline cyan"),
-        ("\n\n", ""),
-        ("Waiting for authorization...", "dim"),
-    )
+def _open_browser_for_auth(
+    github_client_id: str, redirect_uri: str
+) -> None:
+    """Build authorize URL, display instructions, and open browser."""
+    params = urllib.parse.urlencode({
+        "client_id": github_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "read:user user:email",
+    })
+    authorize_url = f"{GITHUB_AUTHORIZE_URL}?{params}"
 
     console.print(Panel(
-        panel_content,
-        title=f"[bold]{provider.title()} Device Authorization[/bold]",
+        f"[bold]Opening browser for GitHub authorization...[/bold]\n\n"
+        f"If browser doesn't open, visit:\n"
+        f"[cyan underline]{authorize_url}[/cyan underline]",
+        title="[bold]GitHub OAuth Login[/bold]",
         border_style="green",
         padding=(1, 2),
     ))
 
-    # Try to open browser automatically
     try:
-        webbrowser.open(verification_uri)
+        webbrowser.open(authorize_url)
         console.print("[dim]Browser opened automatically.[/dim]\n")
     except Exception:
         console.print("[dim]Please open the URL above in your browser.[/dim]\n")
 
-    # Step 3: Poll for token
-    token = _poll_for_token(provider, device_code, interval, expires_in)
-    if not token:
+
+def _exchange_code_with_server(
+    code: str, redirect_uri: str, server_url: str
+) -> Optional[dict]:
+    """Send authorization code to OMAS server, return token response.
+
+    Returns the full response dict or None on failure.
+    """
+    console.print("[dim]Exchanging code with OMAS Cloud server...[/dim]")
+
+    client = OmasCloudClient(base_url=server_url)
+
+    try:
+        return client.login_with_github(code=code, redirect_uri=redirect_uri)
+    except ConnectRPCError as e:
+        console.print(f"[red]Server authentication failed: {e.message}[/red]")
+        if e.code == "unavailable":
+            console.print("[dim]Is the OMAS Cloud server running?[/dim]")
+        return None
+    except Exception as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        return None
+
+
+def _save_and_display_result(result: dict, server_url: str) -> bool:
+    """Extract tokens from server response, save credentials, display welcome.
+
+    Returns True on success.
+    """
+    access_token = result.get("access_token", result.get("accessToken", ""))
+    refresh_token = result.get("refresh_token", result.get("refreshToken", ""))
+    user = result.get("user", {})
+
+    if not access_token:
+        console.print("[red]Server did not return an access token.[/red]")
         return False
 
-    console.print("[bold green]Authorization successful![/bold green]\n")
+    username = user.get("username", "")
+    display_name = user.get("display_name", user.get("displayName", username))
 
-    # Step 4: Fetch user info
-    user_info = _fetch_user_info(provider, token)
-    username = ""
-    if user_info:
-        if provider == "github":
-            username = user_info.get("login", "")
-            name = user_info.get("name", username)
-            avatar = user_info.get("avatar_url", "")
-            console.print(f"[green]Welcome, {name}![/green]  (@{username})")
-        elif provider == "google":
-            username = user_info.get("email", "")
-            name = user_info.get("name", username)
-            console.print(f"[green]Welcome, {name}![/green]  ({username})")
+    save_credentials(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=user,
+        server_url=server_url,
+    )
 
-    # Step 5: Save credentials
-    save_credentials(provider=provider, token=token, username=username)
-    console.print(f"\n[dim]Credentials saved to OS keychain.[/dim]")
-    console.print(f"[dim]Run 'omas auth status' to verify.[/dim]")
+    console.print(f"\n[bold green]Welcome, {display_name}![/bold green]  (@{username})")
+    console.print("[dim]Credentials saved to OS keychain.[/dim]")
+    console.print(f"[dim]Server: {server_url}[/dim]")
+    console.print("[dim]Run 'omas auth status' to verify.[/dim]")
 
     return True
+
+
+def start_oauth_flow(
+    server_url: str = DEFAULT_SERVER_URL,
+    github_client_id: str = DEFAULT_GITHUB_CLIENT_ID,
+) -> bool:
+    """Start the OAuth Authorization Code Flow for GitHub.
+
+    Args:
+        server_url: OMAS Cloud server URL
+        github_client_id: GitHub OAuth App client ID (must match server's)
+
+    Returns:
+        True if authentication succeeded.
+    """
+    console.print("\n[bold]Authenticating with GitHub...[/bold]\n")
+
+    port = _find_free_port()
+    redirect_uri = f"http://localhost:{port}/callback"
+
+    _open_browser_for_auth(github_client_id, redirect_uri)
+
+    code = _wait_for_callback(port)
+    if not code:
+        return False
+
+    console.print("[green]Authorization code received![/green]")
+
+    result = _exchange_code_with_server(code, redirect_uri, server_url)
+    if not result:
+        return False
+
+    return _save_and_display_result(result, server_url)
+
+
+def refresh_access_token(server_url: str = DEFAULT_SERVER_URL) -> bool:
+    """Refresh the access token using the stored refresh token.
+
+    Returns True if refresh succeeded.
+    """
+    from omas.cloud.credentials import get_refresh_token, update_access_token
+
+    token = get_refresh_token()
+    if not token:
+        logger.debug("No refresh token available")
+        return False
+
+    client = OmasCloudClient(base_url=server_url)
+
+    try:
+        result = client.refresh_token(token)
+    except ConnectRPCError:
+        logger.debug("Token refresh failed", exc_info=True)
+        return False
+
+    new_access = result.get("access_token", result.get("accessToken", ""))
+    new_refresh = result.get("refresh_token", result.get("refreshToken", ""))
+
+    if new_access:
+        update_access_token(new_access, new_refresh or None)
+        return True
+
+    return False

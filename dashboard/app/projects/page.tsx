@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { ExportData, ProjectSummary } from "@/lib/types";
 import { loadMetrics, getProjectName } from "@/lib/data";
+
+type SortDir = "desc" | "asc";
 
 const HIDDEN_PROJECTS_KEY = "omas-hidden-projects";
 
@@ -79,12 +81,12 @@ function ProjectCard({
 
         <div className="my-2.5" style={{ height: 1, background: "#2f2f2f" }} />
 
-        {/* Dimension bars — Pencil P7 exact colors */}
+        {/* Dimension bars — normalized 0-10 scale (matches Avg formula) */}
         <div className="space-y-2">
-          <DimensionBar label="More" value={p.avg_parallelism_score} max={5} color="#00FF88" />
-          <DimensionBar label="Longer" value={p.avg_autonomy_score} max={10} color="#FFD600" />
-          <DimensionBar label="Thicker" value={p.avg_density_score} max={10} color="#FF6B35" />
-          <DimensionBar label="Fewer" value={p.avg_trust_score} max={10} color="#A855F7" />
+          <DimensionBar label="More" value={p.avg_parallelism_norm ?? p.avg_parallelism_score} max={10} color="#00FF88" />
+          <DimensionBar label="Longer" value={p.avg_autonomy_norm ?? p.avg_autonomy_score} max={10} color="#FFD600" />
+          <DimensionBar label="Thicker" value={p.avg_density_norm ?? p.avg_density_score} max={10} color="#FF6B35" />
+          <DimensionBar label="Fewer" value={p.avg_trust_norm ?? p.avg_trust_score} max={10} color="#A855F7" />
         </div>
       </Link>
     </div>
@@ -120,9 +122,33 @@ function DimensionBar({
   );
 }
 
+/** Sort toggle button (Pencil P7 style). */
+function SortToggle({ dir, onToggle }: { dir: SortDir; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+      style={{ color: "#00FF88", background: "#1A1A1A", border: "1px solid #2f2f2f" }}
+      title={dir === "desc" ? "Sorted: highest first" : "Sorted: lowest first"}
+    >
+      <span>Score</span>
+      <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        {dir === "desc" ? (
+          /* Down arrow */
+          <path d="M5 1v10M1 7l4 4 4-4" />
+        ) : (
+          /* Up arrow */
+          <path d="M5 11V1M1 5l4-4 4 4" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
 export default function ProjectsPage() {
   const [data, setData] = useState<ExportData | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
     loadMetrics().then(setData);
@@ -142,30 +168,43 @@ export default function ProjectsPage() {
     persistHiddenProjects([]);
   }, []);
 
+  const toggleSort = useCallback(() => {
+    setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+  }, []);
+
+  const sortedProjects = useMemo(() => {
+    if (!data) return [];
+    const visible = data.projects.filter((p) => !hidden.includes(p.project_hash));
+    const mul = sortDir === "desc" ? -1 : 1;
+    return [...visible].sort((a, b) => mul * (a.avg_overall_score - b.avg_overall_score));
+  }, [data, hidden, sortDir]);
+
   if (!data) {
     return <div className="text-gray-400 p-8">Loading...</div>;
   }
 
-  const visibleProjects = data.projects.filter((p) => !hidden.includes(p.project_hash));
-  const hiddenCount = data.projects.length - visibleProjects.length;
+  const hiddenCount = data.projects.length - sortedProjects.length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <ProjectsHero count={visibleProjects.length} hiddenCount={hiddenCount} />
-        {hiddenCount > 0 && (
-          <button
-            onClick={restoreAll}
-            className="text-[11px] font-mono px-4 py-2 transition-colors"
-            style={{ color: "#00FF88", background: "#1A1A1A", border: "1px solid #2f2f2f" }}
-          >
-            Restore {hiddenCount} hidden
-          </button>
-        )}
+        <ProjectsHero count={sortedProjects.length} hiddenCount={hiddenCount} />
+        <div className="flex items-center gap-2">
+          <SortToggle dir={sortDir} onToggle={toggleSort} />
+          {hiddenCount > 0 && (
+            <button
+              onClick={restoreAll}
+              className="text-[11px] font-mono px-3 py-1.5 rounded-md transition-colors"
+              style={{ color: "#00FF88", background: "#1A1A1A", border: "1px solid #2f2f2f" }}
+            >
+              Restore {hiddenCount} hidden
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {visibleProjects.map((p) => (
+        {sortedProjects.map((p) => (
           <ProjectCard key={p.project_hash} project={p} onHide={hideProject} />
         ))}
       </div>

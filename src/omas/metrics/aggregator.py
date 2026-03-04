@@ -64,14 +64,17 @@ def _compute_overall_score(
 
     Uses log-scale normalization for metrics with unbounded ranges.
     Each dimension contributes equally (25% weight).
-    """
-    import math
 
-    # Normalize each dimension to roughly 0-10 scale
+    All four dimension scores are already on a 0-10 scale:
+    - p_thread_score: parallelism (capped at 10)
+    - l_thread_score: autonomy (log-scaled)
+    - b_thread_score: density (log-scaled)
+    - z_thread_score: trust (log-scaled with AskUser penalty)
+    """
     p_norm = min(parallelism.p_thread_score, 10.0)
-    l_norm = min(math.log1p(autonomy.l_thread_score) * 2.0, 10.0)
-    b_norm = min(math.log1p(density.b_thread_score) * 2.0, 10.0)
-    f_norm = min(trust.autonomous_tool_call_pct / 10.0, 10.0)
+    l_norm = min(autonomy.l_thread_score, 10.0)
+    b_norm = min(density.b_thread_score, 10.0)
+    f_norm = min(trust.z_thread_score, 10.0)
 
     overall = (p_norm + l_norm + b_norm + f_norm) / 4.0
     return round(overall, 2)

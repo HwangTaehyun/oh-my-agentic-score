@@ -23,12 +23,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
       - name: Generate formula with poet
         run: |
           python3 -m venv /tmp/poet-env
           source /tmp/poet-env/bin/activate
+
+          pip install "setuptools<70"
 
           VERSION="${{ github.event.inputs.version || github.event.client_payload.version || '' }}"
           if [ -n "$VERSION" ]; then
