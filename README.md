@@ -68,7 +68,7 @@ omas dashboard
 |-----------|--------|------------------|
 | **More** | P-thread | Parallel execution paths (concurrent sub-agents) |
 | **Longer** | L-thread | Autonomous work duration without human intervention |
-| **Thicker** | B-thread | Work density (sub-agent depth, tool calls per minute) |
+| **Thicker** | B-thread | Work density (sub-agent depth, AI-written lines bonus) |
 | **Fewer** | Z-thread | Human checkpoint reduction (trust level, trivial delegations excluded) |
 
 ### Seven Thread Types
