@@ -1,5 +1,6 @@
 {
   "name": "omas-docs",
+  "type": "module",
   "private": true,
   "scripts": {
     "docs:dev": "vitepress dev",

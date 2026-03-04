@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Oh My Agentic Score',
   description: 'Measure agentic coding performance',
+  base: '/oh-my-agentic-score/',
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
