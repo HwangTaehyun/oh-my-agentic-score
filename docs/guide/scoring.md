@@ -99,7 +99,8 @@ Measures how few human checkpoints Claude needs to do substantial work. Higher s
 **Formula:**
 
 ```
-ratio_score = min(log1p(tool_calls_per_human_message) * 2.0, 10.0)
+effective_human = human_messages - trivial_delegations   # min 1
+ratio_score = min(log1p(tool_calls / effective_human) * 2.0, 10.0)
 z_thread_score = max(ratio_score - ask_penalty, 0.0)
 ```
 
@@ -115,13 +116,39 @@ z_thread_score = max(ratio_score - ask_penalty, 0.0)
 | 100 | 9.2 |
 | 150+ | ~10.0 |
 
-**AskUserQuestion penalty**: If Claude uses `AskUserQuestion` tool calls, a penalty of up to 3 points is applied: `penalty = min((ask_count / total_tool_calls) * 10.0, 3.0)`.
+### Trivial Delegation Filter
+
+Not all human messages represent meaningful checkpoints. Short commands like "run tests" or "build it" that trigger only a few tool calls are **trivial delegations** — the user is just delegating a quick task, not actually intervening in the AI's work.
+
+**How it works:**
+
+1. Sort human messages by timestamp
+2. Count tool calls between each consecutive pair of human messages
+3. If a segment has **≤ 5 tool calls** (configurable via `TRIVIAL_DELEGATION_THRESHOLD`), that human message is classified as trivial
+4. `effective_human_count = human_messages - trivial_delegations` (minimum 1)
+
+**Example:**
+
+| Human Message | Tool Calls After | Classification |
+|--------------|------------------|----------------|
+| "Run tests" | 1 | Trivial (≤5) |
+| "Build it" | 2 | Trivial (≤5) |
+| "Implement the auth module" | 40 | Real work |
+
+- **Without filter**: `43 / 3 = 14.3` → score 5.5
+- **With filter**: `43 / 1 = 43` → score 7.5 (trivial delegations excluded)
+
+### AskUserQuestion Penalty
+
+If Claude uses `AskUserQuestion` tool calls, a penalty of up to 3 points is applied: `penalty = min((ask_count / total_tool_calls) * 10.0, 3.0)`.
 
 **Metrics collected:**
 
 | Metric | Description |
 |--------|-------------|
-| `tool_calls_per_human_message` | Primary autonomy ratio |
+| `tool_calls_per_human_message` | Tool calls per effective human message (excludes trivial delegations) |
+| `effective_human_count` | Human messages actually used in trust ratio |
+| `trivial_delegation_count` | Human messages classified as trivial delegation (≤5 tool calls) |
 | `assistant_per_human_ratio` | Assistant messages per human message |
 | `ask_user_count` | AskUserQuestion tool call count |
 | `autonomous_tool_call_pct` | Percentage of non-ask tool calls |

@@ -56,7 +56,7 @@ class OmasCloudClient:
         self.session.headers.update({
             "Content-Type": "application/json",
             "Connect-Protocol-Version": "1",
-            "User-Agent": "omas-cli/0.2.0",
+            "User-Agent": "omas-cli/0.3.2",
         })
         if token:
             self.set_token(token)

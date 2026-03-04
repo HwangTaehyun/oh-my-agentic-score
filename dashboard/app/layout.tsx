@@ -64,8 +64,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <title>Oh My Agentic Score</title>
         <meta name="description" content="Oh My Agentic Score - Thread-Based Engineering Analytics" />
-        <link rel="icon" href="/favicon.svg" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/icon.png" />
         {/* JetBrains Mono + Space Grotesk — Pencil design fonts */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

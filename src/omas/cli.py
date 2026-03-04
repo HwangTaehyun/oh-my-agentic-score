@@ -398,18 +398,30 @@ def _try_cloud_upload(server_url: str) -> None:
 
 
 def _launch_dashboard() -> None:
-    """Find and start the Next.js dashboard."""
+    """Find and start the Next.js dashboard, auto-opening in browser."""
+    import threading
+    import webbrowser
+
     dashboard_dir = Path(__file__).parent.parent.parent / "dashboard"
     if not dashboard_dir.exists():
         console.print(f"[red]Dashboard not found at {dashboard_dir}[/red]")
         console.print("Run 'cd dashboard && npm install' first.")
         return
 
-    console.print("[bold]Starting Next.js dashboard...[/bold]")
-    console.print(f"Dashboard directory: {dashboard_dir}")
+    port = 3002
+    url = f"http://localhost:{port}"
+
+    console.print(f"[bold]Starting Next.js dashboard at {url} ...[/bold]")
+
+    def _open_browser() -> None:
+        import time
+        time.sleep(3)
+        webbrowser.open(url)
+
+    threading.Thread(target=_open_browser, daemon=True).start()
 
     try:
-        subprocess.run(["npm", "run", "dev"], cwd=dashboard_dir)
+        subprocess.run(["npm", "run", "dev", "--", "-p", str(port)], cwd=dashboard_dir)
     except KeyboardInterrupt:
         console.print("\n[dim]Dashboard stopped.[/dim]")
     except FileNotFoundError:
