@@ -203,6 +203,27 @@ uv sync
 uv run omas --help
 ```
 
+### Dashboard (Dev Mode)
+
+When running from a git clone, the bundled dashboard is not included.
+Build the static export first, then `omas dashboard` serves it via a pure Python HTTP server (no Node.js runtime needed after build):
+
+```bash
+# 1. Build the dashboard static export (one-time, or after source changes)
+cd dashboard
+npm install   # or: bun install
+npm run build # generates dashboard/out/
+cd ..
+
+# 2. Scan sessions and launch dashboard
+uv run omas scan
+uv run omas dashboard
+```
+
+> **Note:** `omas dashboard` automatically runs `scan` + `export` before launching.
+> If `dashboard/out/` exists, it serves via Python's built-in HTTP server.
+> If `dashboard/out/` is missing and `node_modules/` exists, it falls back to `npx next dev`.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup.
 
 ## Documentation
