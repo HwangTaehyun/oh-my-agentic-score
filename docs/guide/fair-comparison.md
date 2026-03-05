@@ -48,7 +48,7 @@ This means a 60-minute session with 200 tool calls contributes roughly 5x more t
 Measures how stable your scores are across recent sessions (0-10 scale). A perfectly consistent performer scores 10.0.
 
 ```
-std_dev = standard_deviation(recent_20_sessions.overall_score)
+std_dev = standard_deviation(recent_70_sessions.overall_score)
 consistency = max(0, min(10, 10 - std_dev * 3.33))
 ```
 

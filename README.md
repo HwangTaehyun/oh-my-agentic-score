@@ -67,9 +67,9 @@ omas dashboard
 | Dimension | Thread | What It Measures |
 |-----------|--------|------------------|
 | **More** | P-thread | Parallel execution paths (concurrent sub-agents) |
-| **Longer** | L-thread | Autonomous work duration without human intervention |
+| **Longer** | L-thread | Autonomous work duration without human intervention (idle gaps capped at 30min) |
 | **Thicker** | B-thread | Work density (sub-agent depth, tool calls per minute, AI-written lines bonus) |
-| **Fewer** | Z-thread | Human checkpoint reduction (trust level, trivial delegations excluded) |
+| **Fewer** | Z-thread | Human checkpoint reduction (ratio-only, trivial delegations excluded, Plan Mode AskUser exempt) |
 
 ### Seven Thread Types
 
@@ -170,8 +170,12 @@ OMAS parses Claude Code's JSONL session logs from `~/.claude/projects/`. For eac
 
 - **Sweep-line** for concurrent agent detection (parallelism)
 - **Activity-based** autonomy measurement (measures to Claude's last activity, not next human message)
+- **Idle gap capping** at 30 minutes to prevent inflated autonomy scores from idle periods
 - **Jaccard similarity** for fusion thread detection
-- **Log normalization** for unbounded metrics (0-10 scale)
+- **Log normalization** (`log1p(x) * 2.0`) for unbounded metrics (0-10 scale)
+- **Trivial delegation filter** excludes simple human commands (≤5 tool calls) from trust ratio
+- **Plan Mode awareness** exempts AskUserQuestion during planning from penalty
+- **Human message filtering** with 24 automated patterns + minimum length (3 chars)
 
 ## Improving Your Score
 
