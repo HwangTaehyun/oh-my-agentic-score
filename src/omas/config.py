@@ -23,7 +23,7 @@ UPLOAD_QUEUE_PATH = OMAS_DIR / "upload_queue.json"
 #
 # CI/CD injects the production URL by replacing the placeholder value of
 # _PRODUCTION_SERVER_URL before `uv build`.  See .github/workflows/release.yml.
-_PRODUCTION_SERVER_URL = "https://api.oh-my-agentic-coding.com"  # CI/CD replaces this line
+_PRODUCTION_SERVER_URL = "https://api.oh-my-agentic-score.com"  # CI/CD replaces this line
 DEFAULT_SERVER_URL = os.environ.get("OMAS_SERVER_URL", _PRODUCTION_SERVER_URL)
 
 # Thread classification thresholds
