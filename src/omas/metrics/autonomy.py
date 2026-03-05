@@ -11,6 +11,7 @@ Composite l_thread_score (0-10 scale, log normalized):
 from __future__ import annotations
 
 import math
+import statistics
 from datetime import datetime
 
 from omas.models import IDLE_GAP_THRESHOLD, AutonomyMetrics, SessionData
@@ -37,13 +38,19 @@ def compute_autonomy(data: SessionData) -> AutonomyMetrics:
         )
 
     max_consecutive = _count_max_consecutive_assistant_turns(data)
-    l_score = min(math.log1p(longest_stretch) * 2.0, 10.0)
+
+    # v2.1: P75 scoring (CV removed)
+    stretches = _collect_all_stretches(data)
+    p75 = _compute_p75(stretches)
+    l_score = min(math.log1p(p75) * 2.5, 10.0)
 
     return AutonomyMetrics(
         longest_autonomous_stretch_minutes=round(longest_stretch, 2),
         max_tool_calls_between_human=max_tools_between,
         session_duration_minutes=round(data.duration_minutes, 2),
         max_consecutive_assistant_turns=max_consecutive,
+        p75_autonomous_stretch_minutes=round(p75, 2),
+        consistency_factor=1.0,  # v2.1: always 1.0 (CV penalty removed)
         l_thread_score=round(l_score, 2),
     )
 
@@ -104,6 +111,70 @@ def _human_interleaved_stretch(data, human_msgs, tool_calls, activity_timestamps
     max_tools = max(max_tools, len(after_calls))
 
     return longest, max_tools
+
+
+def _collect_all_stretches(data: SessionData) -> list[float]:
+    """Collect durations (minutes) of all autonomous stretches in the session."""
+    human_msgs = sorted(data.human_messages, key=lambda m: m.timestamp)
+    activity_timestamps = sorted([tc.timestamp for tc in data.tool_calls])
+
+    if not human_msgs:
+        # Fully autonomous: single stretch
+        if len(activity_timestamps) >= 2:
+            return [_active_duration_minutes(activity_timestamps)]
+        elif data.duration_minutes > 0:
+            return [data.duration_minutes]
+        return [0.0]
+
+    stretches: list[float] = []
+
+    # Segment before first human message
+    if data.start_time:
+        before = [ts for ts in activity_timestamps if ts < human_msgs[0].timestamp]
+        if before:
+            stretches.append(_active_duration_minutes([data.start_time] + before))
+
+    # Segments between consecutive human messages
+    for i in range(len(human_msgs) - 1):
+        start = human_msgs[i].timestamp
+        end = human_msgs[i + 1].timestamp
+        acts = [ts for ts in activity_timestamps if start < ts < end]
+        if acts:
+            stretches.append(_active_duration_minutes([start] + acts))
+
+    # Segment after last human message
+    last = human_msgs[-1].timestamp
+    after_acts = [ts for ts in activity_timestamps if ts > last]
+    if after_acts:
+        stretches.append(_active_duration_minutes([last] + after_acts))
+
+    return stretches if stretches else [0.0]
+
+
+def _compute_p75(stretches: list[float]) -> float:
+    """Compute the 75th percentile of stretch durations."""
+    if not stretches:
+        return 0.0
+    stretches_sorted = sorted(stretches)
+    idx = int(len(stretches_sorted) * 0.75)
+    idx = min(idx, len(stretches_sorted) - 1)
+    return stretches_sorted[idx]
+
+
+def _compute_consistency_factor(stretches: list[float]) -> float:
+    """Compute consistency factor based on coefficient of variation.
+
+    consistency = 1.0 / (1.0 + 0.5 * cv), where cv = stdev / mean.
+    Single-stretch sessions get perfect consistency (1.0).
+    """
+    if len(stretches) <= 1:
+        return 1.0
+    mean = statistics.mean(stretches)
+    if mean == 0:
+        return 1.0
+    stdev = statistics.stdev(stretches)
+    cv = stdev / mean
+    return 1.0 / (1.0 + 0.5 * cv)
 
 
 def _count_max_consecutive_assistant_turns(data: SessionData) -> int:

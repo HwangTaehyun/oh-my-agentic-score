@@ -36,3 +36,12 @@ dashboard/public/data/metrics.json
 
 # OS
 .DS_Store
+
+# Test data / Example sessions
+-Users-*/
+
+# Analysis artifacts
+.serena/
+.coverage
+pytest_cache/
+docs/architecture/

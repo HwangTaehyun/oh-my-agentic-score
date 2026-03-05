@@ -177,6 +177,9 @@ class AutonomyMetrics(BaseModel):
     session_duration_minutes: float = 0.0
     max_consecutive_assistant_turns: int = 0
     l_thread_score: float = 0.0
+    # v2.0 fields
+    p75_autonomous_stretch_minutes: float = 0.0
+    consistency_factor: float = 1.0
 
 
 class DensityMetrics(BaseModel):
@@ -190,6 +193,10 @@ class DensityMetrics(BaseModel):
     # AI-written lines bonus
     ai_written_lines: int = 0
     ai_line_bonus: float = 0.0
+    # v2.0 fields
+    team_action_calls: int = 0
+    team_query_calls: int = 0
+    effective_team_score: float = 0.0
 
 
 class TrustMetrics(BaseModel):
@@ -231,6 +238,9 @@ class SessionMetrics(BaseModel):
     # AI-written lines of code (top-level shortcut from density)
     ai_written_lines: int = 0
 
+    # v2.0 fields
+    score_formula_version: str = "2.0"
+
     overall_score: float = 0.0
 
 
@@ -240,6 +250,8 @@ class ProjectSummary(BaseModel):
     project_path: str
     project_hash: str
     session_count: int = 0
+    valid_sessions: int = 0
+    excluded_sessions: int = 0
     total_tool_calls: int = 0
     # Raw dimension averages (for data export / cloud upload)
     avg_parallelism_score: float = 0.0
