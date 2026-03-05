@@ -139,8 +139,6 @@ def serve_dashboard(port: int = 3002) -> None:
     development installs.  If the requested port is busy, automatically
     tries the next available port (up to +20).
     """
-    import subprocess
-
     # Find an available port (auto-increment if busy)
     try:
         actual_port = _find_available_port(port)
@@ -197,23 +195,45 @@ def _serve_static(static_dir: Path, port: int) -> None:
 
 
 def _serve_dev(dev_dir: Path, port: int) -> None:
-    """Start the Next.js dev server."""
+    """Start the Next.js dev server.
+
+    Automatically installs dependencies if node_modules is missing,
+    preferring bun over npm for speed.
+    """
+    import shutil
     import subprocess
+
+    node_modules = dev_dir / "node_modules"
+    if not node_modules.is_dir():
+        # Auto-install dependencies (prefer bun for speed)
+        pkg_mgr = "bun" if shutil.which("bun") else "npm"
+        console.print(f"[yellow]Installing dashboard dependencies with {pkg_mgr}...[/yellow]")
+        try:
+            subprocess.run(
+                [pkg_mgr, "install"],
+                cwd=str(dev_dir),
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            console.print(f"[red]Failed to install dependencies: {e}[/red]")
+            console.print("[red]Install Node.js (bun or npm) and run 'npm install' in dashboard/.[/red]")
+            return
 
     url = f"http://localhost:{port}"
     console.print(f"[bold]Starting Next.js dev dashboard at {url} ...[/bold]")
 
+    # Use npx next to ensure we find the local binary
     _open_browser_delayed(url, delay=3)
 
     try:
         subprocess.run(
-            ["npm", "run", "dev", "--", "-p", str(port)],
+            ["npx", "next", "dev", "-p", str(port)],
             cwd=str(dev_dir),
         )
     except KeyboardInterrupt:
         console.print("\n[dim]Dashboard stopped.[/dim]")
     except FileNotFoundError:
-        console.print("[red]npm not found. Install Node.js or use a packaged install.[/red]")
+        console.print("[red]npx not found. Install Node.js or use a packaged install.[/red]")
 
 
 def _open_browser_delayed(url: str, delay: int = 1) -> None:
