@@ -19,37 +19,80 @@ from omas.models import (
 )
 
 
-def _is_human_message(record: dict) -> bool:
-    """Determine if a user record represents a genuine human message.
+def _extract_human_text(record: dict) -> str | None:
+    """Extract genuine human-typed text from a user record.
 
-    Human messages have:
-    - type == "user"
-    - userType == "external"
-    - message.content is a plain string (not a list of tool_result objects)
-    - No automated XML tags in content
+    Returns the human text if found, or None if the record is not a human
+    message.  Handles two content formats:
+
+    1. **String content** — the traditional format where ``message.content``
+       is a plain string typed by the user.
+    2. **List content with text items** — newer Claude Code versions bundle
+       the user's prompt with IDE context (e.g. ``<ide_opened_file>`` tags)
+       as a list of ``{"type": "text", "text": "..."}`` objects.  We extract
+       only the non-automated text items.  Lists that contain only
+       ``tool_result`` items (permission approvals) are *not* human messages.
+
+    Automated messages (context continuations, caveats, system reminders,
+    etc.) are filtered out via ``AUTOMATED_MESSAGE_PATTERNS``.
     """
     if record.get("type") != "user":
-        return False
+        return None
     if record.get("userType") != "external":
-        return False
+        return None
 
     message = record.get("message", {})
     content = message.get("content", "")
 
-    # Tool results come as arrays
-    if not isinstance(content, str):
-        return False
+    # --- String content (traditional format) ---
+    if isinstance(content, str):
+        text = content.strip()
+        if not text:
+            return None
+        for pattern in AUTOMATED_MESSAGE_PATTERNS:
+            if pattern in text:
+                return None
+        return text
 
-    # Filter automated messages
-    for pattern in AUTOMATED_MESSAGE_PATTERNS:
-        if pattern in content:
-            return False
+    # --- List content ---
+    if isinstance(content, list):
+        # Lists with only tool_result items are permission approvals, not human
+        item_types = {
+            item.get("type", "") for item in content if isinstance(item, dict)
+        }
+        if item_types <= {"tool_result"}:
+            return None
 
-    # Empty content is not a meaningful human message
-    if not content.strip():
-        return False
+        # Extract text items that look like genuine human input
+        human_parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = (item.get("text") or "").strip()
+            if not text:
+                continue
+            # Skip automated / IDE-injected fragments
+            is_automated = False
+            for pattern in AUTOMATED_MESSAGE_PATTERNS:
+                if pattern in text:
+                    is_automated = True
+                    break
+            if is_automated:
+                continue
+            # Skip IDE context tags (e.g. <ide_opened_file>)
+            if text.startswith("<ide_") or text.startswith("<command-"):
+                continue
+            human_parts.append(text)
 
-    return True
+        if human_parts:
+            return " ".join(human_parts)
+
+    return None
+
+
+def _is_human_message(record: dict) -> bool:
+    """Determine if a user record represents a genuine human message."""
+    return _extract_human_text(record) is not None
 
 
 def _extract_tool_calls(record: dict, timestamp: datetime) -> tuple[list[ToolCall], int]:
@@ -179,9 +222,9 @@ def parse_session(jsonl_path: Path, subagent_dir: Optional[Path] = None) -> Sess
 
 def _handle_user_record(record: dict, ts, data: SessionData):
     """Process a user-type record."""
-    is_human = _is_human_message(record)
-    content = record.get("message", {}).get("content", "")
-    preview = content[:100].strip() if isinstance(content, str) else ""
+    human_text = _extract_human_text(record)
+    is_human = human_text is not None
+    preview = (human_text or "")[:100].strip()
     if ts:
         data.user_messages.append(
             UserMessage(timestamp=ts, is_human=is_human, content_preview=preview)

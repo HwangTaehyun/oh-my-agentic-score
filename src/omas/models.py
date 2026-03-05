@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+# Idle gap threshold: gaps longer than this between consecutive activity
+# timestamps are excluded from session duration (e.g., user left permission
+# prompt unanswered for hours/days).
+IDLE_GAP_THRESHOLD = timedelta(minutes=30)
 
 
 class ThreadType(str, Enum):
@@ -101,7 +106,49 @@ class SessionData(BaseModel):
 
     @property
     def duration_minutes(self) -> float:
-        """Session duration in minutes."""
+        """Active session duration in minutes (idle gaps excluded).
+
+        Collects all activity timestamps (tool calls, user messages, assistant
+        messages), sorts them, and sums only the gaps that are shorter than
+        ``IDLE_GAP_THRESHOLD``.  This prevents idle periods (e.g., user left a
+        permission prompt unanswered for hours) from inflating session duration
+        and composite score weights.
+        """
+        if not self.start_time or not self.end_time:
+            return 0.0
+
+        # Gather all activity timestamps
+        timestamps: list[datetime] = []
+        if self.start_time:
+            timestamps.append(self.start_time)
+        for tc in self.tool_calls:
+            timestamps.append(tc.timestamp)
+        for um in self.user_messages:
+            timestamps.append(um.timestamp)
+        if self.end_time:
+            timestamps.append(self.end_time)
+
+        if len(timestamps) < 2:
+            return 0.0
+
+        timestamps.sort()
+
+        # Sum only active gaps (shorter than threshold)
+        active_seconds = 0.0
+        for i in range(1, len(timestamps)):
+            gap = timestamps[i] - timestamps[i - 1]
+            if gap <= IDLE_GAP_THRESHOLD:
+                active_seconds += gap.total_seconds()
+            else:
+                # Cap idle gaps at the threshold value so sessions with
+                # occasional pauses still get some duration credit
+                active_seconds += IDLE_GAP_THRESHOLD.total_seconds()
+
+        return max(active_seconds / 60.0, 0.0)
+
+    @property
+    def wall_clock_minutes(self) -> float:
+        """Total wall-clock duration (start to end, including idle gaps)."""
         if self.start_time and self.end_time:
             delta = (self.end_time - self.start_time).total_seconds()
             return max(delta / 60.0, 0.0)
