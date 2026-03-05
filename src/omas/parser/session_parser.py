@@ -238,6 +238,16 @@ def _handle_assistant_record(record: dict, ts, data: SessionData, model_name: st
         calls, written_lines = _extract_tool_calls(record, ts)
         data.tool_calls.extend(calls)
         data.ai_written_lines += written_lines
+
+        # Register Agent tool calls as agent_events so _build_sub_agents()
+        # can detect them.  Previously only "agent_progress" progress records
+        # populated agent_events, but current Claude Code versions do not
+        # always emit those — the Agent tool_use in assistant messages is
+        # the reliable source.
+        for call in calls:
+            if call.is_subagent and call.agent_id:
+                data.agent_events.append((call.agent_id, ts))
+
         if len(calls) > data.peak_parallel_tools_in_message:
             data.peak_parallel_tools_in_message = len(calls)
 
