@@ -100,7 +100,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   href={item.href}
                   label={item.label}
                   icon={item.icon}
-                  isActive={pathname === item.href}
+                  isActive={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)}
                 />
               ))}
             </div>
