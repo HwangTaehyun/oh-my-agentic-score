@@ -1,6 +1,6 @@
 # Cloud Upload
 
-OMAS supports optional cloud upload for sharing metrics and future leaderboard features. The system is designed with an **offline-first** architecture — everything works locally without any network access.
+OMAS supports optional cloud upload for sharing metrics and comparing your agentic coding scores with other developers. Check the leaderboard at [oh-my-agentic-score.com](https://oh-my-agentic-score.com). The system is designed with an **offline-first** architecture — everything works locally without any network access.
 
 ## Authentication Setup
 
@@ -84,6 +84,23 @@ omas scan → SQLite DB (always)
 - Network failures queue data for automatic retry (max 5 attempts)
 - The dashboard works entirely from local data
 - You can use OMAS indefinitely without ever enabling cloud features
+
+## Leaderboard
+
+After uploading, visit [oh-my-agentic-score.com](https://oh-my-agentic-score.com) to:
+
+- View your ranking among other developers
+- Compare your 4-dimension scores (More, Longer, Thicker, Fewer)
+- Track your score progression over time
+- See community-wide score distributions
+
+### Quick Start (Scan → Upload → Rank)
+
+```bash
+omas auth login          # Authenticate with GitHub or Google
+omas dashboard           # Scans, exports, uploads, and launches dashboard
+# Visit https://oh-my-agentic-score.com to check your ranking
+```
 
 ## Environment Variables
 

@@ -60,6 +60,27 @@ omas report
 omas dashboard
 ```
 
+### Cloud Ranking (Optional)
+
+Upload your scores and compare with other developers at [oh-my-agentic-score.com](https://oh-my-agentic-score.com):
+
+```bash
+# 1. Authenticate via GitHub or Google
+omas auth login
+
+# 2. Scan & upload in one step
+omas dashboard              # auto-scans, exports, uploads, and launches dashboard
+
+# Or upload manually
+omas upload                 # upload to cloud
+omas upload --dry-run       # preview what will be uploaded
+
+# 3. Check your ranking
+#    Visit https://oh-my-agentic-score.com
+```
+
+All uploads are **privacy-safe** — project paths are hashed (SHA-256), no source code is ever transmitted.
+
 ## Features
 
 ### Four-Dimension Scoring (0-10 scale)
