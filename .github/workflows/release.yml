@@ -20,14 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Build dashboard (static export)
         run: |
-          cd dashboard && npm ci && npm run build
+          cd dashboard && bun install --frozen-lockfile && bun run build
           rm -rf out/data  # Dev metrics — users have their own
 
       - name: Install uv
