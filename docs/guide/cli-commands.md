@@ -125,12 +125,9 @@ Manage authentication for OMAS Cloud.
 
 ```bash
 omas auth login
-omas auth login --provider google
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--provider` | OAuth provider: `github` or `google` (default: `github`) |
+Authenticates via GitHub OAuth device flow.
 
 ### `omas auth logout`
 

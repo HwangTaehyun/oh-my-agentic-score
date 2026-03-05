@@ -4,16 +4,12 @@ OMAS supports optional cloud upload for sharing metrics and comparing your agent
 
 ## Authentication Setup
 
-OMAS Cloud uses OAuth for authentication, supporting GitHub and Google providers.
+OMAS Cloud uses OAuth for authentication via GitHub.
 
 ### Login
 
 ```bash
-# Login with GitHub (default)
 omas auth login
-
-# Login with Google
-omas auth login --provider google
 ```
 
 This initiates a device flow: OMAS displays a code, you visit a URL in your browser, enter the code, and authorize the application. Credentials are stored securely via your system keyring.
@@ -97,7 +93,7 @@ After uploading, visit [oh-my-agentic-score.com](https://oh-my-agentic-score.com
 ### Quick Start (Scan → Upload → Rank)
 
 ```bash
-omas auth login          # Authenticate with GitHub or Google
+omas auth login          # Authenticate with GitHub
 omas dashboard           # Scans, exports, uploads, and launches dashboard
 # Visit https://oh-my-agentic-score.com to check your ranking
 ```

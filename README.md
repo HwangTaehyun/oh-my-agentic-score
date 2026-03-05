@@ -65,7 +65,7 @@ omas dashboard
 Upload your scores and compare with other developers at [oh-my-agentic-score.com](https://oh-my-agentic-score.com):
 
 ```bash
-# 1. Authenticate via GitHub or Google
+# 1. Authenticate via GitHub
 omas auth login
 
 # 2. Scan & upload in one step
@@ -117,7 +117,7 @@ omas export                  # Export JSON for dashboard
 omas dashboard               # Launch Next.js dashboard
 omas list                    # List discovered sessions
 omas tui                     # Interactive TUI (via Trogon)
-omas auth login              # OAuth login (GitHub/Google)
+omas auth login              # OAuth login (GitHub)
 omas auth status             # Check auth status
 omas upload --dry-run        # Preview cloud upload
 ```
