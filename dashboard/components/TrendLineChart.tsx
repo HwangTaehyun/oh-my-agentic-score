@@ -23,7 +23,7 @@ export default function TrendLineChart({ sessions }: TrendLineChartProps) {
       {
         label: "More",
         data: sorted.map((s) =>
-          Math.min(s.parallelism.p_thread_score * 2, 10)
+          Math.min(s.parallelism.p_thread_score, 10)
         ),
         borderColor: DIMENSION_COLORS.more,
         backgroundColor: DIMENSION_COLORS.more + "33",

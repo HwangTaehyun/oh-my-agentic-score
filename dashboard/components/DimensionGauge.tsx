@@ -21,7 +21,7 @@ export default function DimensionGauge({ sessions }: DimensionGaugeProps) {
   const avg = (fn: (s: SessionMetrics) => number) =>
     sessions.reduce((sum, x) => sum + fn(x), 0) / sessions.length;
 
-  const avgMore = avg((s) => Math.min(s.parallelism.p_thread_score * 2, 10));
+  const avgMore = avg((s) => Math.min(s.parallelism.p_thread_score, 10));
   const avgLonger = avg((s) => s.autonomy.l_thread_score);
   const avgThicker = avg((s) => Math.min(s.density.b_thread_score, 10));
   const avgFewer = avg((s) => s.trust.z_thread_score);
