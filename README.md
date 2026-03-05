@@ -168,7 +168,7 @@ OMAS parses Claude Code's JSONL session logs from `~/.claude/projects/`. For eac
 
 ### Key Algorithms
 
-- **Cross-session sweep-line** for concurrent session detection (parallelism)
+- **Cross-session sweep-line** for peak concurrent session detection (parallelism) — avoids over-counting from pairwise overlap
 - **Orchestration breadth** for within-session agent concurrency (density)
 - **Activity-based** autonomy measurement (measures to Claude's last activity, not next human message)
 - **Idle gap capping** at 30 minutes to prevent inflated autonomy scores from idle periods

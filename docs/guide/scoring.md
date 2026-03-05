@@ -34,7 +34,7 @@ Measures how many Claude Code sessions are running simultaneously.
 p_thread_score = min(concurrent_sessions, 10.0)
 ```
 
-**Algorithm**: Uses a **cross-session sweep-line** approach. For each session, OMAS counts overlapping sessions where `A.start < B.end AND B.start < A.end`. All projects are included in the sweep. This is a direct value, NOT log-scaled.
+**Algorithm**: Uses a **sweep-line** approach to find the actual peak number of sessions running at any point in time. All sessions across all projects are included. Events (+1 at session start, -1 at session end) are sorted chronologically and swept to build a concurrency timeline. For each session, the peak concurrent count during its active window is recorded. This avoids over-counting from pairwise overlap — e.g., a long session overlapping with 3 short non-concurrent sessions correctly gets peak 2, not 4. This is a direct value, NOT log-scaled.
 
 **Score reference:**
 

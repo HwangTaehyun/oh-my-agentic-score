@@ -51,10 +51,10 @@ Multiple agents receive substantially similar prompts — a pattern of distribut
 ### P-thread (Parallel)
 
 ```
-max_concurrent_agents >= 2
+concurrent_sessions >= 2
 ```
 
-Two or more agents running simultaneously. Detected using the sweep-line algorithm on agent time ranges.
+Two or more Claude Code sessions running simultaneously (cross-session). Detected using the sweep-line algorithm across all session time ranges to find peak concurrent count.
 
 ### C-thread (Chained)
 
