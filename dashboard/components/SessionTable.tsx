@@ -45,7 +45,7 @@ function SessionRow({ s }: { s: SessionMetrics }) {
   return (
     <tr key={s.session_id} className="hover:brightness-125">
       <td className="px-3 py-2 text-gray-300">
-        <Link href={`/sessions/${s.session_id}`} className="hover:text-cyan-400">
+        <Link href={`/sessions/?id=${s.session_id}`} className="hover:text-cyan-400">
           {s.timestamp ? format(parseISO(s.timestamp), "MM/dd HH:mm") : "N/A"}
         </Link>
       </td>

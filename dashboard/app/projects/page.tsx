@@ -1,9 +1,71 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ExportData, ProjectSummary } from "@/lib/types";
-import { loadMetrics, getProjectName } from "@/lib/data";
+import { useSearchParams } from "next/navigation";
+import { ExportData, PeriodType, ProjectSummary, SessionMetrics } from "@/lib/types";
+import { loadMetrics, getProjectName, filterByProject } from "@/lib/data";
+import ChartProvider from "@/components/ChartProvider";
+import ScoreCard from "@/components/ScoreCard";
+import PeriodFilter from "@/components/PeriodFilter";
+import RadarChart from "@/components/RadarChart";
+import ThreadTypePieChart from "@/components/ThreadTypePieChart";
+import TrendLineChart from "@/components/TrendLineChart";
+import ToolCallBarChart from "@/components/ToolCallBarChart";
+import SessionTable from "@/components/SessionTable";
+
+// ─── Project Detail View ────────────────────────────────────────────
+
+function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
+  const [period, setPeriod] = useState<PeriodType>("weekly");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
+
+  const project = data.projects.find((p) => p.project_hash === slug);
+  if (!project) return <div className="text-red-400 p-8">Project not found: {slug}</div>;
+
+  const sessions = data.sessions.filter((s) => s.project_path === project.project_path);
+  const totalTools = sessions.reduce((s, x) => s + x.total_tool_calls, 0);
+  const avgScore = sessions.length > 0
+    ? sessions.reduce((s, x) => s + x.overall_score, 0) / sessions.length
+    : 0;
+
+  return (
+    <ChartProvider>
+      <div className="space-y-6">
+        <div>
+          <a href="/projects/" className="text-gray-400 hover:text-white text-sm">&larr; Back</a>
+          <h1 className="text-2xl font-bold text-white mt-2">{getProjectName(project.project_path)}</h1>
+          <p className="text-sm text-gray-400 mt-1">{project.project_path}</p>
+        </div>
+
+        <PeriodFilter
+          period={period} onPeriodChange={setPeriod}
+          since={since} until={until}
+          onSinceChange={setSince} onUntilChange={setUntil}
+        />
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <ScoreCard title="Sessions" value={project.session_count} color="cyan" />
+          <ScoreCard title="Tool Calls" value={totalTools.toLocaleString()} color="green" />
+          <ScoreCard title="Avg Score" value={avgScore.toFixed(2)} color="purple" />
+          <ScoreCard title="Main Type" value={project.dominant_thread_type} color="yellow" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <RadarChart sessions={sessions} />
+          <ThreadTypePieChart sessions={sessions} />
+        </div>
+
+        <TrendLineChart sessions={sessions} />
+        <ToolCallBarChart sessions={sessions} period={period} />
+        <SessionTable sessions={sessions} />
+      </div>
+    </ChartProvider>
+  );
+}
+
+// ─── Project List View ──────────────────────────────────────────────
 
 type SortDir = "desc" | "asc";
 
@@ -22,7 +84,6 @@ function persistHiddenProjects(hashes: string[]) {
   localStorage.setItem(HIDDEN_PROJECTS_KEY, JSON.stringify(hashes));
 }
 
-/** Pencil P7 hero section with green subtitle annotation. */
 function ProjectsHero({ count, hiddenCount }: { count: number; hiddenCount: number }) {
   return (
     <div>
@@ -32,22 +93,26 @@ function ProjectsHero({ count, hiddenCount }: { count: number; hiddenCount: numb
       <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Projects</h1>
       <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
         {count} projects tracked
-        {hiddenCount > 0 && (
-          <span style={{ color: "#666" }}> ({hiddenCount} hidden)</span>
-        )}
+        {hiddenCount > 0 && <span style={{ color: "#666" }}> ({hiddenCount} hidden)</span>}
       </p>
     </div>
   );
 }
 
-/** Single project card with dimension bars (Pencil P7 card style). */
-function ProjectCard({
-  project,
-  onHide,
-}: {
-  project: ProjectSummary;
-  onHide: (hash: string) => void;
-}) {
+function DimensionBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  const pct = Math.min((value / max) * 100, 100);
+  return (
+    <div className="flex items-center gap-2 text-[10px]">
+      <span className="w-14 font-mono" style={{ color }}>{label}</span>
+      <div className="flex-1 h-1.5 overflow-hidden" style={{ background: "#1A1A1A", borderRadius: 3 }}>
+        <div className="h-full" style={{ width: `${pct}%`, backgroundColor: color, borderRadius: 3 }} />
+      </div>
+      <span className="w-8 text-right font-mono" style={{ color }}>{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+function ProjectCard({ project, onHide }: { project: ProjectSummary; onHide: (hash: string) => void }) {
   const p = project;
   return (
     <div className="relative group">
@@ -62,26 +127,18 @@ function ProjectCard({
       </button>
 
       <Link
-        href={`/projects/${encodeURIComponent(p.project_hash)}`}
+        href={`/projects/?slug=${encodeURIComponent(p.project_hash)}`}
         className="block rounded-lg p-5 hover:brightness-110 transition-all"
         style={{ background: "#0A0A0A", border: "1px solid #2f2f2f" }}
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white truncate pr-6">
-            {getProjectName(p.project_path)}
-          </h3>
+          <h3 className="text-sm font-bold text-white truncate pr-6">{getProjectName(p.project_path)}</h3>
         </div>
-
         <div className="flex items-center gap-4 mt-1.5 text-[11px]" style={{ color: "#8a8a8a" }}>
           <span>{p.session_count} sessions</span>
-          <span className="font-semibold" style={{ color: "#00FF88" }}>
-            Avg: {p.avg_overall_score.toFixed(2)}
-          </span>
+          <span className="font-semibold" style={{ color: "#00FF88" }}>Avg: {p.avg_overall_score.toFixed(2)}</span>
         </div>
-
         <div className="my-2.5" style={{ height: 1, background: "#2f2f2f" }} />
-
-        {/* Dimension bars — normalized 0-10 scale (matches Avg formula) */}
         <div className="space-y-2">
           <DimensionBar label="More" value={p.avg_parallelism_norm ?? p.avg_parallelism_score} max={10} color="#00FF88" />
           <DimensionBar label="Longer" value={p.avg_autonomy_norm ?? p.avg_autonomy_score} max={10} color="#FFD600" />
@@ -93,36 +150,6 @@ function ProjectCard({
   );
 }
 
-/** Pencil P7 dimension bar with colored fill. */
-function DimensionBar({
-  label,
-  value,
-  max,
-  color,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  color: string;
-}) {
-  const pct = Math.min((value / max) * 100, 100);
-  return (
-    <div className="flex items-center gap-2 text-[10px]">
-      <span className="w-14 font-mono" style={{ color }}>{label}</span>
-      <div className="flex-1 h-1.5 overflow-hidden" style={{ background: "#1A1A1A", borderRadius: 3 }}>
-        <div
-          className="h-full"
-          style={{ width: `${pct}%`, backgroundColor: color, borderRadius: 3 }}
-        />
-      </div>
-      <span className="w-8 text-right font-mono" style={{ color }}>
-        {value.toFixed(1)}
-      </span>
-    </div>
-  );
-}
-
-/** Sort toggle button (Pencil P7 style). */
 function SortToggle({ dir, onToggle }: { dir: SortDir; onToggle: () => void }) {
   return (
     <button
@@ -133,19 +160,24 @@ function SortToggle({ dir, onToggle }: { dir: SortDir; onToggle: () => void }) {
     >
       <span>Score</span>
       <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        {dir === "desc" ? (
-          /* Down arrow */
-          <path d="M5 1v10M1 7l4 4 4-4" />
-        ) : (
-          /* Up arrow */
-          <path d="M5 11V1M1 5l4-4 4 4" />
-        )}
+        {dir === "desc" ? <path d="M5 1v10M1 7l4 4 4-4" /> : <path d="M5 11V1M1 5l4-4 4 4" />}
       </svg>
     </button>
   );
 }
 
-export default function ProjectsPage() {
+export default function ProjectsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="text-gray-400 p-8">Loading...</div>}>
+      <ProjectsPage />
+    </Suspense>
+  );
+}
+
+function ProjectsPage() {
+  const searchParams = useSearchParams();
+  const slug = searchParams.get("slug");
+
   const [data, setData] = useState<ExportData | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -183,6 +215,12 @@ export default function ProjectsPage() {
     return <div className="text-gray-400 p-8">Loading...</div>;
   }
 
+  // Detail mode
+  if (slug) {
+    return <ProjectDetail data={data} slug={slug} />;
+  }
+
+  // List mode
   const hiddenCount = data.projects.length - sortedProjects.length;
 
   return (
