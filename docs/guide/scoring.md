@@ -115,10 +115,11 @@ Measures work density — how much is accomplished per unit time, and the depth 
 **Formula:**
 
 ```
-b_thread_score = total_sub_agents * max(1, max_sub_agent_depth) + max(0, max_concurrent_agents - 1)
+raw = total_sub_agents * max(1, max_sub_agent_depth) + max(0, max_concurrent_agents - 1)
+b_thread_score = min(log1p(raw) * 3.0, 10.0)
 ```
 
-The final term, `max(0, max_concurrent_agents - 1)`, is the **orchestration breadth**. Within-session concurrent agent count (previously measured by P-thread) is now factored into B-thread as orchestration breadth. If a session has 5 agents running concurrently, that adds 4 to the raw B-thread score before log-scaling.
+The final term, `max(0, max_concurrent_agents - 1)`, is the **orchestration breadth**. Within-session concurrent agent count (previously measured by P-thread) is now factored into B-thread as orchestration breadth. If a session has 5 agents running concurrently, that adds 4 to the raw score before log-scaling.
 
 **Depth levels:**
 

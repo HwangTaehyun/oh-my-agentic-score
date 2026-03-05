@@ -42,7 +42,7 @@ def compute_density(
     total_sub = len(data.sub_agents)
     orchestration = max(0, max_concurrent_agents - 1)
     raw = total_sub * max(1, max_depth) + orchestration
-    b_score = min(math.log1p(raw) * 2.0, 10.0)
+    b_score = min(math.log1p(raw) * 3.0, 10.0)
 
     # AI-written lines bonus: linear, max +1.0 at AI_LINES_FULL_SCORE lines
     ai_lines = data.ai_written_lines

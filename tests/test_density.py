@@ -42,18 +42,18 @@ class TestDensityLogNormalization:
     def test_one_subagent(self):
         data = _make_density_session(10, 1)
         result = compute_density(data)
-        assert 1.0 <= result.b_thread_score <= 2.0
+        assert 1.5 <= result.b_thread_score <= 3.0
 
     def test_ten_subagents_depth_1(self):
         data = _make_density_session(100, 10)
         result = compute_density(data)
-        assert 4.0 <= result.b_thread_score <= 6.0
+        assert 6.0 <= result.b_thread_score <= 8.0
 
     def test_26_subagents_depth_1(self):
         """Session A scenario: 26 sub-agents, depth 1."""
         data = _make_density_session(3650, 26)
         result = compute_density(data)
-        assert 6.0 <= result.b_thread_score <= 7.5
+        assert 9.0 <= result.b_thread_score <= 10.0
         assert result.b_thread_score <= 10.0
 
     def test_monotonically_increasing(self):
