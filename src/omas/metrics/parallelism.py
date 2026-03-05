@@ -7,10 +7,47 @@ from datetime import datetime
 from omas.models import ParallelismMetrics, SessionData
 
 
-def compute_parallelism(data: SessionData) -> ParallelismMetrics:
+def compute_cross_session_parallelism(
+    session_ranges: list[tuple[str, datetime, datetime]],
+) -> dict[str, int]:
+    """Compute concurrent session count for each session using pairwise overlap.
+
+    Args:
+        session_ranges: List of (session_id, start_time, end_time) tuples.
+
+    Returns:
+        Dict mapping session_id to max concurrent sessions (including self).
+        Two sessions overlap if A.start < B.end AND B.start < A.end.
+    """
+    result: dict[str, int] = {}
+    n = len(session_ranges)
+    for i in range(n):
+        sid_a, start_a, end_a = session_ranges[i]
+        count = 1  # count self
+        for j in range(n):
+            if i == j:
+                continue
+            _sid_b, start_b, end_b = session_ranges[j]
+            # Two sessions overlap if A.start < B.end AND B.start < A.end
+            if start_a < end_b and start_b < end_a:
+                count += 1
+        result[sid_a] = count
+    return result
+
+
+def compute_parallelism(
+    data: SessionData,
+    concurrent_sessions: int = 1,
+) -> ParallelismMetrics:
     """Compute parallelism metrics for a session.
 
-    Measures how many concurrent execution paths were active.
+    Measures cross-session concurrency (P-thread) and within-session
+    concurrency (informational, fed into B-thread density).
+
+    Args:
+        data: Parsed session data.
+        concurrent_sessions: Number of sessions running concurrently
+            (from cross-session overlap analysis).
     """
     max_concurrent = _find_max_concurrent_agents(data.agent_events)
     total_sub_agents = len(data.sub_agents)
@@ -19,14 +56,15 @@ def compute_parallelism(data: SessionData) -> ParallelismMetrics:
     # Temporal overlap: detect overlapping tool call time windows
     peak_temporal = _find_peak_temporal_overlap(data.tool_calls)
 
-    # P-thread score: the maximum concurrency achieved (capped at 10)
-    p_score = min(float(max(max_concurrent, peak_parallel, peak_temporal)), 10.0)
+    # P-thread score: cross-session concurrency (capped at 10)
+    p_score = min(float(concurrent_sessions), 10.0)
 
     return ParallelismMetrics(
         max_concurrent_agents=max_concurrent,
         total_sub_agents=total_sub_agents,
         peak_parallel_tools=peak_parallel,
         peak_temporal_overlap=peak_temporal,
+        concurrent_sessions=concurrent_sessions,
         p_thread_score=p_score,
     )
 

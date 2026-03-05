@@ -66,8 +66,8 @@ def classify_thread(
     if _detect_fusion(data):
         return ThreadType.F
 
-    # 5. P-thread: Parallel execution
-    if parallelism.max_concurrent_agents >= P_THREAD_MIN_CONCURRENT:
+    # 5. P-thread: Parallel execution (cross-session concurrency)
+    if parallelism.concurrent_sessions >= P_THREAD_MIN_CONCURRENT:
         return ThreadType.P
 
     # 6. C-thread: Chained (multiple human checkpoints)

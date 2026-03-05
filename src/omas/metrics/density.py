@@ -8,10 +8,21 @@ from omas.config import AI_LINES_FULL_SCORE
 from omas.models import DensityMetrics, SessionData
 
 
-def compute_density(data: SessionData) -> DensityMetrics:
+def compute_density(
+    data: SessionData,
+    max_concurrent_agents: int = 0,
+) -> DensityMetrics:
     """Compute work density metrics for a session.
 
     Measures how much work is done per unit time.
+    Orchestration breadth (from within-session agent concurrency) is now
+    folded into the B-thread score here, since P-thread was redesigned
+    for cross-session concurrency.
+
+    Args:
+        data: Parsed session data.
+        max_concurrent_agents: Peak within-session agent concurrency
+            (moved from P-thread to contribute to B-thread density).
     """
     duration = data.duration_minutes
     total_calls = len(data.tool_calls)
@@ -27,8 +38,10 @@ def compute_density(data: SessionData) -> DensityMetrics:
     max_depth = _compute_max_depth(data)
 
     # B-thread score: log-normalized to keep within 0-10 scale
+    # Orchestration breadth adds credit for within-session agent concurrency
     total_sub = len(data.sub_agents)
-    raw = total_sub * max(1, max_depth)
+    orchestration = max(0, max_concurrent_agents - 1)
+    raw = total_sub * max(1, max_depth) + orchestration
     b_score = min(math.log1p(raw) * 2.0, 10.0)
 
     # AI-written lines bonus: linear, max +1.0 at AI_LINES_FULL_SCORE lines

@@ -209,6 +209,9 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
     skipped_count = 0
     error_count = 0
 
+    # Phase 1: Parse all sessions and compute metrics with default concurrent_sessions=1
+    parsed_results = []
+
     with Progress() as progress:
         task = progress.add_task("Analyzing sessions...", total=len(sessions))
 
@@ -233,12 +236,31 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
                     progress.advance(task)
                     continue
 
-                store.save_metrics(metrics)
+                parsed_results.append((session_info, data, metrics))
                 success_count += 1
             except Exception as e:
                 error_count += 1
 
             progress.advance(task)
+
+    # Phase 2: Compute cross-session P-thread scores from time overlaps
+    from omas.metrics.parallelism import compute_cross_session_parallelism
+
+    session_ranges = [
+        (data.session_id, data.start_time, data.end_time)
+        for _, data, _ in parsed_results
+        if data.start_time and data.end_time
+    ]
+    concurrent_map = compute_cross_session_parallelism(session_ranges)
+
+    # Phase 3: Update P-thread scores for sessions with concurrent > 1, then save
+    for session_info, data, metrics in parsed_results:
+        concurrent = concurrent_map.get(data.session_id, 1)
+        if concurrent > 1:
+            metrics.parallelism.concurrent_sessions = concurrent
+            metrics.parallelism.p_thread_score = min(float(concurrent), 10.0)
+            metrics.overall_score = _recompute_overall(metrics)
+        store.save_metrics(metrics)
 
     console.print(
         f"[green]Scan complete: {success_count} sessions analyzed, "
@@ -499,6 +521,19 @@ def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSumm
 
     summaries.sort(key=lambda p: p.session_count, reverse=True)
     return summaries
+
+
+def _recompute_overall(metrics: SessionMetrics) -> float:
+    """Recompute overall score after updating individual dimension scores.
+
+    Mirrors the logic in aggregator._compute_overall_score but operates
+    on a SessionMetrics object rather than individual metric objects.
+    """
+    p_norm = min(metrics.parallelism.p_thread_score, 10.0)
+    l_norm = min(metrics.autonomy.l_thread_score, 10.0)
+    b_norm = min(metrics.density.b_thread_score + metrics.density.ai_line_bonus, 10.0)
+    f_norm = min(metrics.trust.z_thread_score, 10.0)
+    return round((p_norm + l_norm + b_norm + f_norm) / 4.0, 2)
 
 
 def _avg(values: list[float]) -> float:

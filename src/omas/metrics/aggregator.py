@@ -16,14 +16,24 @@ def compute_session_metrics(
     data: SessionData,
     project_path: str = "",
     project_hash: str = "",
+    concurrent_sessions: int = 1,
 ) -> SessionMetrics:
     """Compute all metrics for a session and classify its thread type.
 
     This is the main entry point for analysis.
+
+    Args:
+        data: Parsed session data.
+        project_path: Override project path (uses data.project_path if empty).
+        project_hash: Override project hash (uses data.project_hash if empty).
+        concurrent_sessions: Number of sessions running concurrently
+            (from cross-session overlap analysis, passed to P-thread).
     """
-    parallelism = compute_parallelism(data)
+    parallelism = compute_parallelism(data, concurrent_sessions)
     autonomy = compute_autonomy(data)
-    density = compute_density(data)
+    density = compute_density(
+        data, max_concurrent_agents=parallelism.max_concurrent_agents
+    )
     trust = compute_trust(data)
 
     # Classify thread type

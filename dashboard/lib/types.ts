@@ -11,6 +11,7 @@ export interface ParallelismMetrics {
   max_concurrent_agents: number;
   total_sub_agents: number;
   peak_parallel_tools: number;
+  concurrent_sessions?: number;
   p_thread_score: number;
 }
 

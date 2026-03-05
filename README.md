@@ -66,9 +66,9 @@ omas dashboard
 
 | Dimension | Thread | What It Measures |
 |-----------|--------|------------------|
-| **More** | P-thread | Parallel execution paths (concurrent sub-agents) |
+| **More** | P-thread | Concurrent sessions running simultaneously (cross-session parallelism) |
 | **Longer** | L-thread | Autonomous work duration without human intervention (idle gaps capped at 30min) |
-| **Thicker** | B-thread | Work density (sub-agent depth, tool calls per minute, AI-written lines bonus) |
+| **Thicker** | B-thread | Work density (sub-agent depth, orchestration breadth, tool calls per minute, AI-written lines bonus) |
 | **Fewer** | Z-thread | Human checkpoint reduction (ratio-only, trivial delegations excluded, Plan Mode AskUser exempt) |
 
 ### Seven Thread Types
@@ -168,7 +168,8 @@ OMAS parses Claude Code's JSONL session logs from `~/.claude/projects/`. For eac
 
 ### Key Algorithms
 
-- **Sweep-line** for concurrent agent detection (parallelism)
+- **Cross-session sweep-line** for concurrent session detection (parallelism)
+- **Orchestration breadth** for within-session agent concurrency (density)
 - **Activity-based** autonomy measurement (measures to Claude's last activity, not next human message)
 - **Idle gap capping** at 30 minutes to prevent inflated autonomy scores from idle periods
 - **Jaccard similarity** for fusion thread detection

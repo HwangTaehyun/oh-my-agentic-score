@@ -82,6 +82,7 @@ class MetricsStore:
             self._migrate_add_column(conn, "tool_breakdown", "TEXT")
             self._migrate_add_column(conn, "ai_written_lines", "INTEGER")
             self._migrate_add_column(conn, "ai_line_bonus", "REAL")
+            self._migrate_add_column(conn, "concurrent_sessions", "INTEGER")
 
     @staticmethod
     def _migrate_add_column(conn, column_name: str, column_type: str):
@@ -104,6 +105,7 @@ class MetricsStore:
                     total_human_messages,
                     max_concurrent_agents, total_sub_agents,
                     peak_parallel_tools, p_thread_score,
+                    concurrent_sessions,
                     longest_autonomous_minutes, max_tool_calls_between_human,
                     max_consecutive_assistant_turns, l_thread_score,
                     tool_calls_per_minute, max_sub_agent_depth,
@@ -116,6 +118,7 @@ class MetricsStore:
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
+                    ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
@@ -138,6 +141,7 @@ class MetricsStore:
                     metrics.parallelism.total_sub_agents,
                     metrics.parallelism.peak_parallel_tools,
                     metrics.parallelism.p_thread_score,
+                    metrics.parallelism.concurrent_sessions,
                     # Autonomy
                     metrics.autonomy.longest_autonomous_stretch_minutes,
                     metrics.autonomy.max_tool_calls_between_human,
@@ -283,6 +287,7 @@ def _build_parallelism(row: sqlite3.Row) -> ParallelismMetrics:
         max_concurrent_agents=row["max_concurrent_agents"] or 0,
         total_sub_agents=row["total_sub_agents"] or 0,
         peak_parallel_tools=row["peak_parallel_tools"] or 0,
+        concurrent_sessions=_safe_row_get(row, "concurrent_sessions") or 1,
         p_thread_score=row["p_thread_score"] or 0.0,
     )
 

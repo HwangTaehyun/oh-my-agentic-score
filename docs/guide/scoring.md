@@ -17,32 +17,46 @@ These four dimensions capture what it means to be good at agentic coding:
 
 | Dimension | Name | Thread | What It Measures |
 |-----------|------|--------|------------------|
-| **More** | Parallelism | P-thread | Concurrent execution paths (sub-agents running simultaneously) |
+| **More** | Parallelism | P-thread | Concurrent sessions running simultaneously (cross-session parallelism) |
 | **Longer** | Autonomy | L-thread | How long Claude works without human intervention |
 | **Thicker** | Density | B-thread | Work density — sub-agent depth, tool calls per minute |
 | **Fewer** | Trust | Z-thread | Human checkpoint reduction — more work per human message |
 
 ## More (Parallelism Score)
 
-Measures the maximum number of concurrent execution paths.
+Measures how many Claude Code sessions are running simultaneously.
 
-**Why this matters for agentic coding:** A skilled agentic developer knows how to decompose work into independent subtasks and run them in parallel. Instead of "fix file A, then fix file B, then fix file C" sequentially, they say "fix these 5 files simultaneously." This multiplies throughput — 5 agents working in parallel complete in the time of 1.
+**Why this matters for agentic coding:** A skilled agentic developer decomposes work into independent streams and runs multiple sessions in parallel. Opening 5 terminals each running Claude Code multiplies throughput — each session works on an independent task, and all progress happens concurrently. This is fundamentally different from sub-agent parallelism within a single session (which is now measured by Thicker).
 
 **Formula:**
 
 ```
-p_thread_score = max(max_concurrent_agents, peak_parallel_tools)
+p_thread_score = min(concurrent_sessions, 10.0)
 ```
 
-**Algorithm**: Uses a **sweep-line** approach over agent time ranges. For each sub-agent, OMAS computes `[first_timestamp, last_timestamp]`, then sweeps events (+1 at start, -1 at end) to find peak overlap.
+**Algorithm**: Uses a **cross-session sweep-line** approach. For each session, OMAS counts overlapping sessions where `A.start < B.end AND B.start < A.end`. All projects are included in the sweep. This is a direct value, NOT log-scaled.
+
+**Score reference:**
+
+| Sessions | Score |
+|----------|-------|
+| 1 | 1.0 |
+| 2 | 2.0 |
+| 3 | 3.0 |
+| 5 | 5.0 |
+| 10 | 10.0 |
+
+**Key insight**: P-thread is computed during `omas scan` which sees all sessions. `omas analyze` (single session) defaults to P-thread=1.
 
 **Metrics collected:**
 
 | Metric | Description |
 |--------|-------------|
-| `max_concurrent_agents` | Peak agent overlap via sweep-line |
-| `total_sub_agents` | Total sub-agents spawned |
-| `peak_parallel_tools` | Max parallel tool calls in a single message |
+| `concurrent_sessions` | Peak concurrent sessions via cross-session sweep-line |
+
+::: tip
+`max_concurrent_agents` (within-session agent concurrency) has moved to the Thicker dimension as "orchestration breadth."
+:::
 
 ## Longer (Autonomy Score)
 
@@ -101,8 +115,10 @@ Measures work density — how much is accomplished per unit time, and the depth 
 **Formula:**
 
 ```
-b_thread_score = total_sub_agents * max(1, max_sub_agent_depth)
+b_thread_score = total_sub_agents * max(1, max_sub_agent_depth) + max(0, max_concurrent_agents - 1)
 ```
+
+The final term, `max(0, max_concurrent_agents - 1)`, is the **orchestration breadth**. Within-session concurrent agent count (previously measured by P-thread) is now factored into B-thread as orchestration breadth. If a session has 5 agents running concurrently, that adds 4 to the raw B-thread score before log-scaling.
 
 **Depth levels:**
 
@@ -150,6 +166,7 @@ This is measured **per session**, not cumulative. Typical sessions earn +0.0~0.2
 | `tool_calls_per_minute` | Work throughput rate |
 | `tokens_per_minute` | Token throughput rate |
 | `max_sub_agent_depth` | Deepest nesting level |
+| `max_concurrent_agents` | Peak concurrent agents within session (orchestration breadth) |
 | `total_tool_calls` | Raw tool call count |
 | `ai_written_lines` | Total lines written by AI via Write/Edit/MultiEdit tools |
 | `ai_line_bonus` | Density bonus from AI-written lines (max +1.0) |
