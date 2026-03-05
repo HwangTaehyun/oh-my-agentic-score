@@ -10,28 +10,46 @@ from omas.models import ParallelismMetrics, SessionData
 def compute_cross_session_parallelism(
     session_ranges: list[tuple[str, datetime, datetime]],
 ) -> dict[str, int]:
-    """Compute concurrent session count for each session using pairwise overlap.
+    """Compute peak concurrent sessions for each session using sweep-line.
+
+    For each session, finds the maximum number of sessions that were
+    *actually running at the same point in time* during its active window.
 
     Args:
         session_ranges: List of (session_id, start_time, end_time) tuples.
 
     Returns:
-        Dict mapping session_id to max concurrent sessions (including self).
-        Two sessions overlap if A.start < B.end AND B.start < A.end.
+        Dict mapping session_id to peak concurrent sessions (including self).
     """
+    if not session_ranges:
+        return {}
+
+    # Build sweep-line events: +1 at start, -1 at end
+    events: list[tuple[datetime, int]] = []
+    for _sid, start, end in session_ranges:
+        events.append((start, 1))
+        events.append((end, -1))
+    # Sort: by time, then starts (+1) before ends (-1) at same time
+    events.sort(key=lambda x: (x[0], -x[1]))
+
+    # Build timeline of concurrency at each event point
+    timeline: list[tuple[datetime, int]] = []
+    current = 0
+    for ts, delta in events:
+        current += delta
+        timeline.append((ts, current))
+
+    # For each session, find peak concurrency during its [start, end] window
     result: dict[str, int] = {}
-    n = len(session_ranges)
-    for i in range(n):
-        sid_a, start_a, end_a = session_ranges[i]
-        count = 1  # count self
-        for j in range(n):
-            if i == j:
-                continue
-            _sid_b, start_b, end_b = session_ranges[j]
-            # Two sessions overlap if A.start < B.end AND B.start < A.end
-            if start_a < end_b and start_b < end_a:
-                count += 1
-        result[sid_a] = count
+    for sid, start, end in session_ranges:
+        peak = 1
+        for ts, concurrent in timeline:
+            if ts > end:
+                break
+            if ts >= start:
+                peak = max(peak, concurrent)
+        result[sid] = peak
+
     return result
 
 

@@ -46,3 +46,26 @@ def test_partial_overlap():
     assert result["s1"] == 2
     assert result["s2"] == 2
     assert result["s3"] == 1
+
+
+def test_long_session_with_short_non_overlapping():
+    """A long session overlaps with 3 short ones, but they don't overlap each other.
+
+    Session A: |==============================================|  (10:00-18:00)
+    Session B: |==|                                              (10:00-10:05)
+    Session C:              |==|                                 (14:00-14:05)
+    Session D:                                       |==|        (17:00-17:05)
+
+    At any point, max 2 sessions run simultaneously (A + one short).
+    Old pairwise approach would give A=4 (wrong), sweep-line gives A=2 (correct).
+    """
+    result = compute_cross_session_parallelism([
+        ("A", datetime(2024, 1, 1, 10, 0), datetime(2024, 1, 1, 18, 0)),
+        ("B", datetime(2024, 1, 1, 10, 0), datetime(2024, 1, 1, 10, 5)),
+        ("C", datetime(2024, 1, 1, 14, 0), datetime(2024, 1, 1, 14, 5)),
+        ("D", datetime(2024, 1, 1, 17, 0), datetime(2024, 1, 1, 17, 5)),
+    ])
+    assert result["A"] == 2  # NOT 4
+    assert result["B"] == 2
+    assert result["C"] == 2
+    assert result["D"] == 2
