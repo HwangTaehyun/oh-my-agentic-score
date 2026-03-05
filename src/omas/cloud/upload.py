@@ -184,6 +184,7 @@ def _do_upload(
     qualified: list[SessionMetrics],
     server_url: str,
     access_token: str,
+    verbose: bool = False,
 ) -> dict | None:
     """Perform the actual Connect-RPC upload.
 
@@ -193,9 +194,21 @@ def _do_upload(
     project_payloads = _build_project_payloads(qualified)
     client = OmasCloudClient(base_url=server_url, token=access_token)
 
+    rpc_url = f"{server_url}/omas.cloud.v1.ScoreService/UploadSessions"
+    if verbose:
+        console.print(f"[dim]POST {rpc_url}[/dim]")
+        console.print(f"[dim]  Sessions: {len(session_payloads)}, Projects: {len(project_payloads)}[/dim]")
+        payload_size = len(json.dumps({"sessions": session_payloads, "projects": project_payloads}))
+        console.print(f"[dim]  Payload size: {payload_size:,} bytes[/dim]")
+
     try:
-        return _send_upload(client, session_payloads, project_payloads)
+        result = _send_upload(client, session_payloads, project_payloads)
+        if verbose:
+            console.print(f"[dim]  Response: {result}[/dim]")
+        return result
     except ConnectRPCError as e:
+        if verbose:
+            console.print(f"[dim]  Error: [{e.code}] {e.message} (HTTP {e.status_code})[/dim]")
         if e.code == "unauthenticated":
             return _retry_with_refreshed_token(
                 client, server_url, session_payloads, project_payloads
@@ -203,6 +216,8 @@ def _do_upload(
         console.print(f"[red]Upload failed: {e.message}[/red]")
         return None
     except Exception as e:
+        if verbose:
+            console.print(f"[dim]  Exception: {type(e).__name__}: {e}[/dim]")
         console.print(f"[red]Upload error: {e}[/red]")
         return None
 
@@ -232,6 +247,7 @@ def upload_metrics(
     sessions: list[SessionMetrics],
     dry_run: bool = False,
     server_url: str = DEFAULT_SERVER_URL,
+    verbose: bool = False,
 ) -> bool:
     """Upload session metrics to OMAS Cloud.
 
@@ -239,12 +255,21 @@ def upload_metrics(
         sessions: All locally stored session metrics
         dry_run: If True, only preview what would be uploaded
         server_url: OMAS Cloud server URL
+        verbose: If True, print detailed upload information
 
     Returns:
         True if upload succeeded (or dry_run completed).
     """
     qualified = [s for s in sessions if is_qualified(s)]
     excluded_count = len(sessions) - len(qualified)
+
+    if verbose:
+        console.print(f"\n[bold]Upload Details[/bold]")
+        console.print(f"  Default server URL (config): {DEFAULT_SERVER_URL}")
+        console.print(f"  CLI --server-url:            {server_url}")
+        console.print(f"  Total sessions:              {len(sessions)}")
+        console.print(f"  Qualified sessions:          {len(qualified)}")
+        console.print(f"  Excluded (not qualified):    {excluded_count}")
 
     if not qualified:
         console.print("[yellow]No qualified sessions to upload.[/yellow]")
@@ -262,9 +287,21 @@ def upload_metrics(
         return False
 
     access_token = creds["access_token"]
-    url = creds.get("server_url", server_url)
+    # Always use the CLI-provided server_url (which comes from --server-url
+    # or DEFAULT_SERVER_URL). The credential's server_url is informational
+    # only (records where the user logged in).
+    cred_url = creds.get("server_url", "")
+    url = server_url
 
-    result = _do_upload(qualified, url, access_token)
+    if verbose:
+        username = creds.get("user", {}).get("username", "unknown")
+        console.print(f"  Credential server URL:       {cred_url!r}")
+        console.print(f"  [bold]Resolved upload URL:   {url}[/bold]")
+        console.print(f"  Authenticated as:            {username}")
+        console.print(f"  Access token:                {access_token[:20]}...")
+        console.print()
+
+    result = _do_upload(qualified, url, access_token, verbose=verbose)
 
     if result:
         inserted = result.get("inserted_count", result.get("insertedCount", 0))

@@ -550,13 +550,14 @@ def auth_status():
 
 @cli.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be uploaded without uploading")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed upload information (server URL, auth, payload)")
 @click.option(
     "--server-url",
     default=DEFAULT_SERVER_URL,
     envvar="OMAS_SERVER_URL",
     help="OMAS Cloud server URL",
 )
-def upload(dry_run: bool, server_url: str):
+def upload(dry_run: bool, verbose: bool, server_url: str):
     """Upload metrics to OMAS Cloud."""
     from omas.cloud.upload import upload_metrics
     from omas.storage.sqlite_store import MetricsStore as _MetricsStore
@@ -566,7 +567,7 @@ def upload(dry_run: bool, server_url: str):
     if not sessions:
         console.print("[yellow]No data to upload. Run 'omas scan' first.[/yellow]")
         return
-    upload_metrics(sessions, dry_run=dry_run, server_url=server_url)
+    upload_metrics(sessions, dry_run=dry_run, server_url=server_url, verbose=verbose)
 
 
 @cli.command("cloud-status")
