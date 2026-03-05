@@ -189,6 +189,7 @@ def scan(ctx, project: Optional[str], since: Optional[str]):
 
     store = MetricsStore()
     success_count = 0
+    skipped_count = 0
     error_count = 0
 
     with Progress() as progress:
@@ -209,6 +210,12 @@ def scan(ctx, project: Optional[str], since: Optional[str]):
                     project_hash=session_info["project_hash"],
                 )
 
+                # Skip empty sessions (no tool calls, no assistant activity)
+                if metrics.total_tool_calls == 0 and metrics.total_human_messages == 0:
+                    skipped_count += 1
+                    progress.advance(task)
+                    continue
+
                 store.save_metrics(metrics)
                 success_count += 1
             except Exception as e:
@@ -218,7 +225,7 @@ def scan(ctx, project: Optional[str], since: Optional[str]):
 
     console.print(
         f"[green]Scan complete: {success_count} sessions analyzed, "
-        f"{error_count} errors[/green]"
+        f"{skipped_count} empty skipped, {error_count} errors[/green]"
     )
     console.print(f"Database: {store.db_path}")
 
@@ -345,7 +352,7 @@ def dashboard(ctx, skip_scan: bool, skip_upload: bool, server_url: str):
         discovered = discover_sessions(claude_dir=claude_dir)
         store = MetricsStore()
         stored_count = store.count()
-        if len(discovered) != stored_count:
+        if len(discovered) > stored_count:
             console.print(f"[dim]New sessions detected ({len(discovered)} found, {stored_count} stored)[/dim]")
             ctx.invoke(scan)
         else:
