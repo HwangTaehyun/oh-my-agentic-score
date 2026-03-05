@@ -227,8 +227,8 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
                     project_hash=session_info["project_hash"],
                 )
 
-                # Skip empty sessions (no tool calls, no assistant activity)
-                if metrics.total_tool_calls == 0 and metrics.total_human_messages == 0:
+                # Skip sessions with no tool calls (no agentic work)
+                if metrics.total_tool_calls == 0:
                     skipped_count += 1
                     progress.advance(task)
                     continue
