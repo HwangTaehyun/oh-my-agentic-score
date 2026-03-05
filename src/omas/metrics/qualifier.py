@@ -40,7 +40,7 @@ def session_weight(session: SessionMetrics) -> float:
     return math.log1p(session.total_tool_calls) * math.log1p(session.session_duration_minutes)
 
 
-def consistency_score(sessions: list[SessionMetrics], n: int = 20) -> float:
+def consistency_score(sessions: list[SessionMetrics], n: int = 70) -> float:
     """Compute consistency score from recent sessions (0-10 scale).
 
     Lower standard deviation in overall scores = higher consistency.
