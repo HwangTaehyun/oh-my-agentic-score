@@ -17,6 +17,7 @@ import mimetypes
 import os
 import threading
 import webbrowser
+import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
@@ -28,6 +29,28 @@ console = Console()
 # Ensure .js files are served with correct MIME type
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
+
+# Maximum number of ports to try before giving up
+_MAX_PORT_ATTEMPTS = 20
+
+
+def _find_available_port(start_port: int) -> int:
+    """Find an available port starting from *start_port*.
+
+    Tries up to ``_MAX_PORT_ATTEMPTS`` consecutive ports. Returns the first
+    available port, or raises ``OSError`` if none are free.
+    """
+    for offset in range(_MAX_PORT_ATTEMPTS):
+        port = start_port + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise OSError(
+        f"No available port found in range {start_port}-{start_port + _MAX_PORT_ATTEMPTS - 1}"
+    )
 
 
 def _make_handler_class(
@@ -113,9 +136,22 @@ def serve_dashboard(port: int = 3002) -> None:
     """Start the dashboard HTTP server.
 
     Tries bundled static files first; falls back to ``npm run dev`` for
-    development installs.
+    development installs.  If the requested port is busy, automatically
+    tries the next available port (up to +20).
     """
     import subprocess
+
+    # Find an available port (auto-increment if busy)
+    try:
+        actual_port = _find_available_port(port)
+    except OSError as e:
+        console.print(f"[red]{e}[/red]")
+        return
+
+    if actual_port != port:
+        console.print(
+            f"[yellow]Port {port} is in use, using {actual_port} instead.[/yellow]"
+        )
 
     bundled = _get_bundled_dashboard_dir()
     dev_dir = _get_dev_dashboard_dir()
@@ -128,60 +164,64 @@ def serve_dashboard(port: int = 3002) -> None:
             static_dir = out_dir
 
     if static_dir:
-        # Serve static files via Python HTTP server
-        metrics_path = _find_metrics_json()
-        url = f"http://localhost:{port}"
-
-        handler_class = _make_handler_class(str(static_dir), metrics_path)
-        server = HTTPServer(("127.0.0.1", port), handler_class)
-
-        console.print(f"[bold]Dashboard running at {url}[/bold]")
-        if metrics_path:
-            console.print(f"[dim]Metrics: {metrics_path}[/dim]")
-        else:
-            console.print("[dim]No metrics.json found. Run 'omas export' first.[/dim]")
-        console.print("[dim]Press Ctrl+C to stop.[/dim]")
-
-        # Open browser after short delay
-        def _open():
-            import time
-            time.sleep(1)
-            webbrowser.open(url)
-
-        threading.Thread(target=_open, daemon=True).start()
-
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            console.print("\n[dim]Dashboard stopped.[/dim]")
-        finally:
-            server.server_close()
-
+        _serve_static(static_dir, actual_port)
     elif dev_dir:
-        # Development mode: use npm run dev
-        url = f"http://localhost:{port}"
-        console.print(f"[bold]Starting Next.js dev dashboard at {url} ...[/bold]")
-
-        def _open():
-            import time
-            time.sleep(3)
-            webbrowser.open(url)
-
-        threading.Thread(target=_open, daemon=True).start()
-
-        try:
-            subprocess.run(
-                ["npm", "run", "dev", "--", "-p", str(port)],
-                cwd=str(dev_dir),
-            )
-        except KeyboardInterrupt:
-            console.print("\n[dim]Dashboard stopped.[/dim]")
-        except FileNotFoundError:
-            console.print("[red]npm not found. Install Node.js or use a packaged install.[/red]")
-
+        _serve_dev(dev_dir, actual_port)
     else:
-        console.print("[red]Dashboard not found.[/red]")
-        console.print(
-            "Install the full package (pip install oh-my-agentic-score) "
-            "or run from the source repo."
+        console.print("[red]No dashboard found. Install with 'pip install oh-my-agentic-score'.[/red]")
+
+
+def _serve_static(static_dir: Path, port: int) -> None:
+    """Serve the static dashboard build via Python HTTP server."""
+    metrics_path = _find_metrics_json()
+    url = f"http://localhost:{port}"
+
+    handler_class = _make_handler_class(str(static_dir), metrics_path)
+    server = HTTPServer(("127.0.0.1", port), handler_class)
+
+    console.print(f"[bold]Dashboard running at {url}[/bold]")
+    if metrics_path:
+        console.print(f"[dim]Metrics: {metrics_path}[/dim]")
+    else:
+        console.print("[dim]No metrics.json found. Run 'omas export' first.[/dim]")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+
+    _open_browser_delayed(url, delay=1)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped.[/dim]")
+    finally:
+        server.server_close()
+
+
+def _serve_dev(dev_dir: Path, port: int) -> None:
+    """Start the Next.js dev server."""
+    import subprocess
+
+    url = f"http://localhost:{port}"
+    console.print(f"[bold]Starting Next.js dev dashboard at {url} ...[/bold]")
+
+    _open_browser_delayed(url, delay=3)
+
+    try:
+        subprocess.run(
+            ["npm", "run", "dev", "--", "-p", str(port)],
+            cwd=str(dev_dir),
         )
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped.[/dim]")
+    except FileNotFoundError:
+        console.print("[red]npm not found. Install Node.js or use a packaged install.[/red]")
+
+
+def _open_browser_delayed(url: str, delay: int = 1) -> None:
+    """Open the browser after a short delay in a background thread."""
+
+    def _open():
+        import time
+        time.sleep(delay)
+        webbrowser.open(url)
+
+    threading.Thread(target=_open, daemon=True).start()
