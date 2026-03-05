@@ -87,8 +87,8 @@ function DimensionCard({ dim }: { dim: DimensionConfig }) {
       <FormulaBlock title={dim.formulaTitle} lines={dim.formula} colorClass={tc} />
       {dim.fullScoreNote && (
         <div className={`${bg} rounded p-3 flex items-start gap-2`}>
-          <span className={`${tc} text-sm shrink-0`}>★</span>
-          <p className={`text-xs font-mono ${tc}`}>{dim.fullScoreNote}</p>
+          <span className={`${tc} text-xs leading-none mt-[3px] shrink-0`}>★</span>
+          <p className={`text-xs font-mono leading-relaxed ${tc}`}>{dim.fullScoreNote}</p>
         </div>
       )}
       <DetailBlock title={dim.detailTitle} lines={dim.detail} />

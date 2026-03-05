@@ -1,5 +1,4 @@
-"""Tests for density metrics (Bug #2 verification)."""
-import pytest
+"""Tests for density metrics."""
 from omas.models import SessionData, ToolCall, SubAgentInfo
 from omas.metrics.density import compute_density
 from datetime import datetime, timedelta
@@ -27,39 +26,47 @@ def _make_density_session(num_tools: int, num_subagents: int, depth: int = 1, du
     return data
 
 
-class TestDensityLogNormalization:
-    def test_b_score_capped_at_10(self):
-        """B-score should never exceed 10, even with many sub-agents."""
-        data = _make_density_session(100, 50, depth=2)
-        result = compute_density(data)
-        assert result.b_thread_score <= 10.0
+class TestDensityLinearScoring:
+    """Thicker score = min(total_agents, 10). Linear, 10 agents = perfect."""
 
-    def test_zero_subagents(self):
+    def test_zero_agents(self):
         data = _make_density_session(10, 0)
         result = compute_density(data)
         assert result.b_thread_score == 0.0
 
-    def test_one_subagent(self):
+    def test_one_agent(self):
         data = _make_density_session(10, 1)
         result = compute_density(data)
-        assert 1.5 <= result.b_thread_score <= 3.0
+        assert result.b_thread_score == 1.0
 
-    def test_ten_subagents_depth_1(self):
+    def test_five_agents(self):
+        data = _make_density_session(100, 5)
+        result = compute_density(data)
+        assert result.b_thread_score == 5.0
+
+    def test_ten_agents_is_max(self):
         data = _make_density_session(100, 10)
         result = compute_density(data)
-        assert 6.0 <= result.b_thread_score <= 8.0
+        assert result.b_thread_score == 10.0
 
-    def test_26_subagents_depth_1(self):
-        """Session A scenario: 26 sub-agents, depth 1."""
-        data = _make_density_session(3650, 26)
+    def test_capped_at_10(self):
+        """More than 10 agents should still cap at 10."""
+        data = _make_density_session(100, 50)
         result = compute_density(data)
-        assert 9.0 <= result.b_thread_score <= 10.0
-        assert result.b_thread_score <= 10.0
+        assert result.b_thread_score == 10.0
+
+    def test_depth_does_not_multiply(self):
+        """Depth 2 should NOT multiply the score — just total count matters."""
+        data_flat = _make_density_session(100, 5, depth=1)
+        data_nested = _make_density_session(100, 5, depth=2)
+        flat = compute_density(data_flat)
+        nested = compute_density(data_nested)
+        assert flat.b_thread_score == nested.b_thread_score == 5.0
 
     def test_monotonically_increasing(self):
-        """More sub-agents should give higher scores."""
+        """More agents should give higher scores."""
         scores = []
-        for n in [1, 5, 10, 20, 50]:
+        for n in [1, 5, 8, 10]:
             data = _make_density_session(100, n)
             result = compute_density(data)
             scores.append(result.b_thread_score)
