@@ -6,7 +6,7 @@ back to the original ``npm run dev`` workflow.
 
 Key features:
   - SPA fallback: unmatched paths serve the directory's ``index.html``
-  - ``/data/metrics.json`` is served from the runtime export directory
+  - ``/data/metrics.json`` is served from ``~/.omas/data/metrics.json``
   - No Node.js runtime required
   - Silent log output (no per-request lines)
 """
@@ -17,7 +17,6 @@ import mimetypes
 import os
 import threading
 import webbrowser
-from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
@@ -31,51 +30,58 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
 
-class DashboardHandler(SimpleHTTPRequestHandler):
-    """HTTP handler with SPA fallback for the static dashboard."""
+def _make_handler_class(
+    dashboard_dir: str, metrics_json_path: Optional[str]
+) -> type:
+    """Create a handler class with the given dashboard dir and metrics path."""
 
-    # Set via functools.partial when constructing
-    metrics_json_path: Optional[str] = None
+    class DashboardHandler(SimpleHTTPRequestHandler):
+        """HTTP handler with SPA fallback for the static dashboard."""
 
-    def do_GET(self) -> None:
-        """Handle GET with SPA fallback logic."""
-        # Serve runtime metrics.json from the export directory
-        if self.path == "/data/metrics.json" or self.path == "/data/metrics.json/":
-            if self.metrics_json_path and os.path.isfile(self.metrics_json_path):
-                self.path = "/data/metrics.json"
-                # Temporarily override directory to serve from metrics parent
-                original_dir = self.directory
-                self.directory = str(Path(self.metrics_json_path).parent.parent)
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("directory", dashboard_dir)
+            super().__init__(*args, **kwargs)
+
+        def do_GET(self) -> None:
+            """Handle GET with SPA fallback logic."""
+            # Serve runtime metrics.json from ~/.omas/data/
+            if self.path in ("/data/metrics.json", "/data/metrics.json/"):
+                if metrics_json_path and os.path.isfile(metrics_json_path):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    data = Path(metrics_json_path).read_bytes()
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                else:
+                    self.send_error(404, "metrics.json not found. Run: omas scan && omas export")
+                    return
+
+            # Try to serve the file as-is first
+            path = self.translate_path(self.path)
+
+            if os.path.isfile(path):
                 super().do_GET()
-                self.directory = original_dir
-                return
-            else:
-                self.send_error(404, "metrics.json not found")
                 return
 
-        # Try to serve the file as-is first
-        # Build the filesystem path
-        path = self.translate_path(self.path)
+            # SPA fallback: if the path is a directory with index.html, serve it
+            if os.path.isdir(path):
+                index = os.path.join(path, "index.html")
+                if os.path.isfile(index):
+                    super().do_GET()
+                    return
 
-        if os.path.isfile(path):
+            # Final fallback: serve root index.html (SPA catch-all)
+            self.path = "/index.html"
             super().do_GET()
-            return
 
-        # SPA fallback: if the path looks like a route (not a file),
-        # try serving the directory's index.html or root index.html
-        if os.path.isdir(path):
-            index = os.path.join(path, "index.html")
-            if os.path.isfile(index):
-                super().do_GET()
-                return
+        def log_message(self, format: str, *args: object) -> None:
+            """Suppress per-request log output."""
+            pass
 
-        # Final fallback: serve root index.html (SPA catch-all)
-        self.path = "/index.html"
-        super().do_GET()
-
-    def log_message(self, format: str, *args: object) -> None:
-        """Suppress per-request log output."""
-        pass
+    return DashboardHandler
 
 
 def _get_bundled_dashboard_dir() -> Optional[Path]:
@@ -88,8 +94,6 @@ def _get_bundled_dashboard_dir() -> Optional[Path]:
 
 def _get_dev_dashboard_dir() -> Optional[Path]:
     """Return the path to the development dashboard/, or None."""
-    # In an editable install, __file__ is src/omas/dashboard_server.py
-    # and the dashboard dir is at the repo root: ../../dashboard
     dev_dir = Path(__file__).parent.parent.parent / "dashboard"
     if dev_dir.is_dir() and (dev_dir / "package.json").is_file():
         return dev_dir
@@ -97,15 +101,11 @@ def _get_dev_dashboard_dir() -> Optional[Path]:
 
 
 def _find_metrics_json() -> Optional[str]:
-    """Locate the most recent metrics.json export file."""
-    # Check common locations
-    candidates = [
-        Path.home() / ".omas" / "data" / "metrics.json",
-        Path.home() / ".oh-my-agentic-score" / "data" / "metrics.json",
-    ]
-    for p in candidates:
-        if p.is_file():
-            return str(p)
+    """Locate the metrics.json export file."""
+    from omas.config import OMAS_DIR
+    p = OMAS_DIR / "data" / "metrics.json"
+    if p.is_file():
+        return str(p)
     return None
 
 
@@ -120,15 +120,20 @@ def serve_dashboard(port: int = 3002) -> None:
     bundled = _get_bundled_dashboard_dir()
     dev_dir = _get_dev_dashboard_dir()
 
-    if bundled:
-        # Production mode: serve static files via Python
+    # Use static export (dashboard/out/) from dev repo if available
+    static_dir = bundled
+    if not static_dir and dev_dir:
+        out_dir = dev_dir / "out"
+        if out_dir.is_dir() and (out_dir / "index.html").is_file():
+            static_dir = out_dir
+
+    if static_dir:
+        # Serve static files via Python HTTP server
         metrics_path = _find_metrics_json()
         url = f"http://localhost:{port}"
 
-        handler = partial(DashboardHandler, directory=str(bundled))
-        handler.metrics_json_path = metrics_path  # type: ignore[attr-defined]
-
-        server = HTTPServer(("127.0.0.1", port), handler)
+        handler_class = _make_handler_class(str(static_dir), metrics_path)
+        server = HTTPServer(("127.0.0.1", port), handler_class)
 
         console.print(f"[bold]Dashboard running at {url}[/bold]")
         if metrics_path:

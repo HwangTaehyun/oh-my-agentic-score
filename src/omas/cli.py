@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -315,9 +314,10 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
 
     # Determine output path
     if output is None:
-        dashboard_dir = Path(__file__).parent.parent.parent / "dashboard" / "public" / "data"
-        dashboard_dir.mkdir(parents=True, exist_ok=True)
-        output = dashboard_dir / "metrics.json"
+        from omas.config import OMAS_DIR
+        data_dir = OMAS_DIR / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        output = data_dir / "metrics.json"
 
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -338,10 +338,18 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
 )
 @click.pass_context
 def dashboard(ctx, skip_scan: bool, skip_upload: bool, server_url: str):
-    """Scan sessions, upload to cloud, and launch Next.js dashboard."""
-    # Step 1: Scan sessions
+    """Scan sessions, upload to cloud, and launch dashboard."""
+    # Step 1: Scan sessions (skip if DB already has same count as discovered)
     if not skip_scan:
-        ctx.invoke(scan)
+        claude_dir = ctx.obj["claude_dir"]
+        discovered = discover_sessions(claude_dir=claude_dir)
+        store = MetricsStore()
+        stored_count = store.count()
+        if len(discovered) != stored_count:
+            console.print(f"[dim]New sessions detected ({len(discovered)} found, {stored_count} stored)[/dim]")
+            ctx.invoke(scan)
+        else:
+            console.print(f"[dim]No new sessions ({stored_count} stored). Skipping scan.[/dim]")
 
     # Step 2: Export JSON for dashboard
     ctx.invoke(export)
