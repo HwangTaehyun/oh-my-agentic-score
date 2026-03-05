@@ -213,6 +213,12 @@ class MetricsStore:
             result = conn.execute("SELECT COUNT(*) FROM session_metrics").fetchone()
             return result[0] if result else 0
 
+    def get_stored_session_ids(self) -> set[str]:
+        """Return the set of all stored session IDs."""
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute("SELECT session_id FROM session_metrics").fetchall()
+            return {row[0] for row in rows}
+
 
 def _safe_row_get(row: sqlite3.Row, key: str, default=None):
     """Safely get a value from a Row, returning default if column doesn't exist."""

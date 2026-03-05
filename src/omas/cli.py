@@ -167,8 +167,9 @@ def trend(ctx, project: Optional[str], since: Optional[str], dimension: str):
 @cli.command()
 @click.option("--project", help="Filter by project path substring")
 @click.option("--since", help="Only sessions after this date (YYYY-MM-DD)")
+@click.option("--force", is_flag=True, help="Re-analyze all sessions (ignore cache)")
 @click.pass_context
-def scan(ctx, project: Optional[str], since: Optional[str]):
+def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
     """Scan all session JSONL files and build metrics database."""
     claude_dir = ctx.obj["claude_dir"]
     since_dt = _parse_date(since) if since else None
@@ -185,9 +186,20 @@ def scan(ctx, project: Optional[str], since: Optional[str]):
         console.print("[yellow]No sessions found.[/yellow]")
         return
 
-    console.print(f"Found {len(sessions)} sessions")
-
     store = MetricsStore()
+
+    # Unless --force, skip sessions already in the database
+    if not force:
+        stored_ids = store.get_stored_session_ids()
+        new_sessions = [s for s in sessions if s["jsonl_path"].stem not in stored_ids]
+        if not new_sessions:
+            console.print(f"[dim]All {len(sessions)} sessions already analyzed. Use --force to re-analyze.[/dim]")
+            return
+        console.print(f"Found {len(new_sessions)} new sessions (of {len(sessions)} total, use --force to re-analyze all)")
+        sessions = new_sessions
+    else:
+        console.print(f"Found {len(sessions)} sessions (force re-analyze)")
+
     success_count = 0
     skipped_count = 0
     error_count = 0
