@@ -127,13 +127,22 @@ class OmasCloudClient:
     # ─── AuthService ──────────────────────────────────────────────
 
     def login_with_github(self, code: str, redirect_uri: str) -> dict:
-        """Exchange GitHub OAuth authorization code for JWT tokens.
+        """Exchange GitHub OAuth authorization code for JWT tokens (Web flow).
 
         Returns: {access_token, refresh_token, user: {id, username, ...}}
         """
         return self._rpc(_AUTH_SERVICE, "LoginWithGitHub", {
             "code": code,
             "redirect_uri": redirect_uri,
+        })
+
+    def login_with_github_token(self, github_token: str) -> dict:
+        """Exchange a GitHub access token for JWT tokens (CLI Device Flow).
+
+        Returns: {access_token, refresh_token, user: {id, username, ...}}
+        """
+        return self._rpc(_AUTH_SERVICE, "LoginWithGitHub", {
+            "github_token": github_token,
         })
 
     def refresh_token(self, refresh_token: str) -> dict:

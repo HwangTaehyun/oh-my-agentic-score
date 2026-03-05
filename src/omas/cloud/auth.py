@@ -1,26 +1,24 @@
 """OAuth authentication for OMAS Cloud.
 
-Implements the standard OAuth 2.0 Authorization Code Flow for CLI:
-1. Start a temporary local HTTP server on a random port
-2. Open browser to GitHub OAuth authorize URL
-3. User authorizes → GitHub redirects to localhost with ?code=XXX
-4. CLI captures the code
-5. CLI sends code to OMAS server's LoginWithGitHub (Connect-RPC)
-6. Server exchanges code for GitHub token, creates user, returns JWT
+Implements the GitHub Device Flow for CLI:
+1. CLI requests a device code from GitHub
+2. User visits verification URL and enters the user code
+3. CLI polls GitHub until the user authorizes
+4. CLI gets a GitHub access token
+5. CLI sends the token to OMAS server's LoginWithGitHub (Connect-RPC)
+6. Server verifies token, creates/updates user, returns JWT
 7. CLI stores JWT tokens in OS keyring
 
-This is the same pattern used by `gh auth login` and similar CLI tools.
+This is the same pattern used by `gh auth login` for CLI-based auth.
 """
 
 from __future__ import annotations
 
-import http.server
 import logging
-import socket
-import urllib.parse
-import webbrowser
+import time
 from typing import Optional
 
+import requests
 from rich.console import Console
 from rich.panel import Panel
 
@@ -36,127 +34,110 @@ console = Console()
 # The client_secret stays on the server side only.
 DEFAULT_GITHUB_CLIENT_ID = "Ov23liuJVeWlvy5TgK2V"
 
-# GitHub OAuth endpoints
-GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+# GitHub Device Flow endpoints
+GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
+GITHUB_DEVICE_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_DEVICE_VERIFY_URL = "https://github.com/login/device"
 
 
-class _OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
-    """HTTP handler that captures the OAuth callback ?code=... parameter."""
+def _request_device_code(github_client_id: str) -> Optional[dict]:
+    """Request a device code from GitHub for the Device Flow.
 
-    code: Optional[str] = None
-    error: Optional[str] = None
-
-    def do_GET(self) -> None:
-        """Handle the OAuth callback redirect."""
-        query = urllib.parse.urlparse(self.path).query
-        params = urllib.parse.parse_qs(query)
-
-        if "code" in params:
-            _OAuthCallbackHandler.code = params["code"][0]
-            self._respond(
-                200,
-                "<html><body style='font-family:monospace;text-align:center;padding:60px'>"
-                "<h2>Authentication successful!</h2>"
-                "<p>You can close this tab and return to the terminal.</p>"
-                "</body></html>",
-            )
-        elif "error" in params:
-            _OAuthCallbackHandler.error = params.get("error_description", params["error"])[0]
-            self._respond(
-                400,
-                f"<html><body style='font-family:monospace;text-align:center;padding:60px'>"
-                f"<h2>Authentication failed</h2>"
-                f"<p>{_OAuthCallbackHandler.error}</p>"
-                f"</body></html>",
-            )
-        else:
-            self._respond(400, "<html><body><p>Missing code parameter</p></body></html>")
-
-    def _respond(self, status: int, body: str) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(body.encode())
-
-    def log_message(self, format: str, *args: object) -> None:  # type: ignore[override]
-        """Suppress default HTTP server logging."""
-        _ = format, args  # unused
-
-
-def _find_free_port() -> int:
-    """Find a free TCP port on localhost."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _wait_for_callback(port: int) -> Optional[str]:
-    """Start local HTTP server and wait for OAuth callback.
-
-    Returns the authorization code, or None on timeout/error.
+    Returns dict with: device_code, user_code, verification_uri, expires_in, interval
     """
-    _OAuthCallbackHandler.code = None
-    _OAuthCallbackHandler.error = None
-
-    server = http.server.HTTPServer(("127.0.0.1", port), _OAuthCallbackHandler)
-    server.timeout = 120  # 2 minute timeout
-
-    with console.status("[bold green]Waiting for browser authorization...[/bold green]"):
-        server.handle_request()
-
-    server.server_close()
-
-    if _OAuthCallbackHandler.error:
-        console.print(f"[red]Authorization failed: {_OAuthCallbackHandler.error}[/red]")
-        return None
-
-    if not _OAuthCallbackHandler.code:
-        console.print("[red]No authorization code received. Timed out or cancelled.[/red]")
-        return None
-
-    return _OAuthCallbackHandler.code
-
-
-def _open_browser_for_auth(
-    github_client_id: str, redirect_uri: str
-) -> None:
-    """Build authorize URL, display instructions, and open browser."""
-    params = urllib.parse.urlencode({
-        "client_id": github_client_id,
-        "redirect_uri": redirect_uri,
-        "scope": "read:user user:email",
-    })
-    authorize_url = f"{GITHUB_AUTHORIZE_URL}?{params}"
-
-    console.print(Panel(
-        f"[bold]Opening browser for GitHub authorization...[/bold]\n\n"
-        f"If browser doesn't open, visit:\n"
-        f"[cyan underline]{authorize_url}[/cyan underline]",
-        title="[bold]GitHub OAuth Login[/bold]",
-        border_style="green",
-        padding=(1, 2),
-    ))
-
     try:
-        webbrowser.open(authorize_url)
-        console.print("[dim]Browser opened automatically.[/dim]\n")
-    except Exception:
-        console.print("[dim]Please open the URL above in your browser.[/dim]\n")
+        resp = requests.post(
+            GITHUB_DEVICE_CODE_URL,
+            json={
+                "client_id": github_client_id,
+                "scope": "read:user user:email",
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if "error" in data:
+            console.print(f"[red]GitHub error: {data.get('error_description', data['error'])}[/red]")
+            return None
+
+        return data
+    except requests.RequestException as e:
+        console.print(f"[red]Failed to request device code: {e}[/red]")
+        return None
 
 
-def _exchange_code_with_server(
-    code: str, redirect_uri: str, server_url: str
+def _poll_for_token(
+    github_client_id: str, device_code: str, interval: int, expires_in: int
+) -> Optional[str]:
+    """Poll GitHub for the access token until user authorizes or timeout.
+
+    Returns the GitHub access token, or None on failure/timeout.
+    """
+    deadline = time.time() + expires_in
+    poll_interval = max(interval, 5)  # GitHub requires minimum 5 seconds
+
+    with console.status("[bold green]Waiting for authorization...[/bold green]"):
+        while time.time() < deadline:
+            time.sleep(poll_interval)
+
+            try:
+                resp = requests.post(
+                    GITHUB_DEVICE_TOKEN_URL,
+                    json={
+                        "client_id": github_client_id,
+                        "device_code": device_code,
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    headers={"Accept": "application/json"},
+                    timeout=10,
+                )
+                data = resp.json()
+            except requests.RequestException:
+                continue
+
+            error = data.get("error")
+
+            if error == "authorization_pending":
+                # User hasn't authorized yet, keep polling
+                continue
+            elif error == "slow_down":
+                # GitHub wants us to slow down
+                poll_interval += 5
+                continue
+            elif error == "expired_token":
+                console.print("[red]Device code expired. Please try again.[/red]")
+                return None
+            elif error == "access_denied":
+                console.print("[red]Authorization denied by user.[/red]")
+                return None
+            elif error:
+                console.print(f"[red]GitHub error: {data.get('error_description', error)}[/red]")
+                return None
+
+            # Success — got access token
+            token = data.get("access_token")
+            if token:
+                return token
+
+    console.print("[red]Authorization timed out. Please try again.[/red]")
+    return None
+
+
+def _exchange_token_with_server(
+    github_token: str, server_url: str
 ) -> Optional[dict]:
-    """Send authorization code to OMAS server, return token response.
+    """Send GitHub access token to OMAS server, return JWT response.
 
     Returns the full response dict or None on failure.
     """
-    console.print("[dim]Exchanging code with OMAS Cloud server...[/dim]")
+    console.print("[dim]Exchanging token with OMAS Cloud server...[/dim]")
 
     client = OmasCloudClient(base_url=server_url)
 
     try:
-        return client.login_with_github(code=code, redirect_uri=redirect_uri)
+        return client.login_with_github_token(github_token=github_token)
     except ConnectRPCError as e:
         console.print(f"[red]Server authentication failed: {e.message}[/red]")
         if e.code == "unavailable":
@@ -202,7 +183,7 @@ def start_oauth_flow(
     server_url: str = DEFAULT_SERVER_URL,
     github_client_id: str = DEFAULT_GITHUB_CLIENT_ID,
 ) -> bool:
-    """Start the OAuth Authorization Code Flow for GitHub.
+    """Start the GitHub Device Flow for CLI authentication.
 
     Args:
         server_url: OMAS Cloud server URL
@@ -213,18 +194,44 @@ def start_oauth_flow(
     """
     console.print("\n[bold]Authenticating with GitHub...[/bold]\n")
 
-    port = _find_free_port()
-    redirect_uri = f"http://localhost:{port}/auth/callback"
-
-    _open_browser_for_auth(github_client_id, redirect_uri)
-
-    code = _wait_for_callback(port)
-    if not code:
+    # Step 1: Request device code
+    device_data = _request_device_code(github_client_id)
+    if not device_data:
         return False
 
-    console.print("[green]Authorization code received![/green]")
+    user_code = device_data["user_code"]
+    verification_uri = device_data.get("verification_uri", GITHUB_DEVICE_VERIFY_URL)
+    device_code = device_data["device_code"]
+    interval = device_data.get("interval", 5)
+    expires_in = device_data.get("expires_in", 900)
 
-    result = _exchange_code_with_server(code, redirect_uri, server_url)
+    # Step 2: Display user code and verification URL
+    console.print(Panel(
+        f"[bold]Enter this code on GitHub:[/bold]\n\n"
+        f"  [bold cyan]{user_code}[/bold cyan]\n\n"
+        f"Visit: [cyan underline]{verification_uri}[/cyan underline]",
+        title="[bold]GitHub Device Authorization[/bold]",
+        border_style="green",
+        padding=(1, 2),
+    ))
+
+    # Try to open browser
+    import webbrowser
+    try:
+        webbrowser.open(verification_uri)
+        console.print("[dim]Browser opened automatically.[/dim]\n")
+    except Exception:
+        console.print("[dim]Please open the URL above in your browser.[/dim]\n")
+
+    # Step 3: Poll for authorization
+    github_token = _poll_for_token(github_client_id, device_code, interval, expires_in)
+    if not github_token:
+        return False
+
+    console.print("[green]GitHub authorization successful![/green]")
+
+    # Step 4: Exchange GitHub token with OMAS server for JWT
+    result = _exchange_token_with_server(github_token, server_url)
     if not result:
         return False
 
