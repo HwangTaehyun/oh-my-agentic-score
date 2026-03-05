@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from omas.config import AI_LINES_FULL_SCORE
 from omas.models import DensityMetrics, SessionData
 
@@ -24,9 +26,10 @@ def compute_density(data: SessionData) -> DensityMetrics:
     # Max sub-agent depth
     max_depth = _compute_max_depth(data)
 
-    # B-thread score: sub-agents * max(1, depth)
+    # B-thread score: log-normalized to keep within 0-10 scale
     total_sub = len(data.sub_agents)
-    b_score = float(total_sub * max(1, max_depth))
+    raw = total_sub * max(1, max_depth)
+    b_score = min(math.log1p(raw) * 2.0, 10.0)
 
     # AI-written lines bonus: linear, max +1.0 at AI_LINES_FULL_SCORE lines
     ai_lines = data.ai_written_lines

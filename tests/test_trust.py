@@ -161,9 +161,9 @@ class TestComputeTrustTrivialDelegation:
         # Effective ratio = 45 / 1 = 45.0 (not 45/3 = 15.0)
         assert result.tool_calls_per_human_message == float(total_tools)
 
-        # Score with effective ratio should match
-        score_effective = min(math.log1p(float(total_tools)) * 2.0, 10.0)
-        assert abs(result.z_thread_score - round(score_effective, 2)) < 0.01
+        # Score with effective ratio: log1p(45) * 2.0
+        expected_score = min(math.log1p(float(total_tools)) * 2.0, 10.0)
+        assert abs(result.z_thread_score - round(expected_score, 2)) < 0.01
 
     def test_no_trivial_delegations(self):
         """All segments have > 5 tools → no change from old behavior."""
@@ -194,3 +194,48 @@ class TestComputeTrustTrivialDelegation:
         assert result.trivial_delegation_count == 0
         # Falls back to max(0, 1) = 1 in the ratio
         assert result.tool_calls_per_human_message == 2.0
+
+
+class TestFewToolsHighRatio:
+    """Fewer score should reward high ratio regardless of absolute volume."""
+
+    def test_few_tools_high_ratio(self):
+        """20 tools / 1 human = ratio 20 → should still get decent score."""
+        from datetime import datetime, timedelta
+
+        t0 = datetime(2026, 1, 1, 10, 0)
+        data = SessionData(session_id="test")
+        data.start_time = t0
+        data.end_time = t0 + timedelta(hours=1)
+        for i in range(20):
+            data.tool_calls.append(
+                ToolCall(name="Bash", tool_use_id=f"t{i}", timestamp=t0 + timedelta(minutes=i))
+            )
+        data.user_messages.append(
+            UserMessage(timestamp=t0, is_human=True, content_preview="do it")
+        )
+        data.assistant_message_count = 20
+
+        result = compute_trust(data)
+        # ratio 20 → log1p(20) * 2.0 ≈ 6.1, no volume penalty
+        assert result.z_thread_score > 6.0
+
+    def test_many_tools_high_ratio(self):
+        """200 tools / 1 human = ratio 200 → higher score than 20/1."""
+        from datetime import datetime, timedelta
+
+        t0 = datetime(2026, 1, 1, 10, 0)
+        data = SessionData(session_id="test")
+        data.start_time = t0
+        data.end_time = t0 + timedelta(hours=2)
+        for i in range(200):
+            data.tool_calls.append(
+                ToolCall(name="Bash", tool_use_id=f"t{i}", timestamp=t0 + timedelta(seconds=i * 30))
+            )
+        data.user_messages.append(
+            UserMessage(timestamp=t0, is_human=True, content_preview="do it")
+        )
+        data.assistant_message_count = 200
+
+        result = compute_trust(data)
+        assert result.z_thread_score > 7.0

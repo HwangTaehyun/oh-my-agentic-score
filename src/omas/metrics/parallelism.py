@@ -16,15 +16,42 @@ def compute_parallelism(data: SessionData) -> ParallelismMetrics:
     total_sub_agents = len(data.sub_agents)
     peak_parallel = data.peak_parallel_tools_in_message
 
-    # P-thread score: the maximum concurrency achieved
-    p_score = float(max(max_concurrent, peak_parallel))
+    # Temporal overlap: detect overlapping tool call time windows
+    peak_temporal = _find_peak_temporal_overlap(data.tool_calls)
+
+    # P-thread score: the maximum concurrency achieved (capped at 10)
+    p_score = min(float(max(max_concurrent, peak_parallel, peak_temporal)), 10.0)
 
     return ParallelismMetrics(
         max_concurrent_agents=max_concurrent,
         total_sub_agents=total_sub_agents,
         peak_parallel_tools=peak_parallel,
+        peak_temporal_overlap=peak_temporal,
         p_thread_score=p_score,
     )
+
+
+def _find_peak_temporal_overlap(
+    tool_calls: list,
+) -> int:
+    """Find the peak number of temporally overlapping tool calls.
+
+    Groups tool calls by timestamp; calls sharing the exact same timestamp
+    are considered concurrent (they were dispatched in parallel).
+    Uses a sweep-line over per-timestamp windows.
+    """
+    if not tool_calls:
+        return 0
+
+    # Count tool calls at each distinct timestamp
+    from collections import Counter
+
+    ts_counts: Counter[datetime] = Counter()
+    for tc in tool_calls:
+        ts_counts[tc.timestamp] += 1
+
+    # The peak concurrent count is the maximum calls sharing a timestamp
+    return max(ts_counts.values()) if ts_counts else 0
 
 
 def _find_max_concurrent_agents(

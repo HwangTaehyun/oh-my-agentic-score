@@ -86,6 +86,11 @@ def analyze(ctx, session_id: str, output_json: bool):
         project_hash=session_info["project_hash"],
     )
 
+    # Qualifying gate: skip sessions with no tool calls
+    if metrics.total_tool_calls == 0:
+        console.print("[yellow]Session skipped: no tool calls detected[/yellow]")
+        return
+
     # Save to SQLite
     store = MetricsStore()
     store.save_metrics(metrics)

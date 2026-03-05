@@ -9,7 +9,7 @@ from typing import Optional
 
 from dateutil.parser import isoparse
 
-from omas.config import AUTOMATED_MESSAGE_PATTERNS
+from omas.config import AUTOMATED_MESSAGE_PATTERNS, MIN_HUMAN_MESSAGE_LENGTH
 from omas.models import (
     SessionData,
     SubAgentInfo,
@@ -19,74 +19,73 @@ from omas.models import (
 )
 
 
+def _is_automated_text(text: str) -> bool:
+    """Check if text matches any automated message pattern."""
+    for pattern in AUTOMATED_MESSAGE_PATTERNS:
+        if pattern in text:
+            return True
+    return False
+
+
+def _extract_string_content(content: str) -> str | None:
+    """Extract human text from string-format content (traditional format)."""
+    text = content.strip()
+    if not text:
+        return None
+    if _is_automated_text(text):
+        return None
+    if len(text) < MIN_HUMAN_MESSAGE_LENGTH:
+        return None
+    return text
+
+
+def _extract_list_content(content: list) -> str | None:
+    """Extract human text from list-format content (newer Claude Code format).
+
+    Lists that contain only ``tool_result`` items (permission approvals) are
+    not human messages.  Text items matching automated patterns or IDE context
+    tags are filtered out.
+    """
+    item_types = {
+        item.get("type", "") for item in content if isinstance(item, dict)
+    }
+    if item_types <= {"tool_result"}:
+        return None
+
+    human_parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = (item.get("text") or "").strip()
+        if not text or _is_automated_text(text):
+            continue
+        if text.startswith("<ide_") or text.startswith("<command-"):
+            continue
+        human_parts.append(text)
+
+    if not human_parts:
+        return None
+    combined = " ".join(human_parts)
+    if len(combined) < MIN_HUMAN_MESSAGE_LENGTH:
+        return None
+    return combined
+
+
 def _extract_human_text(record: dict) -> str | None:
     """Extract genuine human-typed text from a user record.
 
     Returns the human text if found, or None if the record is not a human
-    message.  Handles two content formats:
-
-    1. **String content** — the traditional format where ``message.content``
-       is a plain string typed by the user.
-    2. **List content with text items** — newer Claude Code versions bundle
-       the user's prompt with IDE context (e.g. ``<ide_opened_file>`` tags)
-       as a list of ``{"type": "text", "text": "..."}`` objects.  We extract
-       only the non-automated text items.  Lists that contain only
-       ``tool_result`` items (permission approvals) are *not* human messages.
-
-    Automated messages (context continuations, caveats, system reminders,
-    etc.) are filtered out via ``AUTOMATED_MESSAGE_PATTERNS``.
+    message.  Delegates to format-specific helpers for string vs list content.
     """
-    if record.get("type") != "user":
-        return None
-    if record.get("userType") != "external":
+    if record.get("type") != "user" or record.get("userType") != "external":
         return None
 
-    message = record.get("message", {})
-    content = message.get("content", "")
+    content = record.get("message", {}).get("content", "")
 
-    # --- String content (traditional format) ---
     if isinstance(content, str):
-        text = content.strip()
-        if not text:
-            return None
-        for pattern in AUTOMATED_MESSAGE_PATTERNS:
-            if pattern in text:
-                return None
-        return text
-
-    # --- List content ---
+        return _extract_string_content(content)
     if isinstance(content, list):
-        # Lists with only tool_result items are permission approvals, not human
-        item_types = {
-            item.get("type", "") for item in content if isinstance(item, dict)
-        }
-        if item_types <= {"tool_result"}:
-            return None
-
-        # Extract text items that look like genuine human input
-        human_parts: list[str] = []
-        for item in content:
-            if not isinstance(item, dict) or item.get("type") != "text":
-                continue
-            text = (item.get("text") or "").strip()
-            if not text:
-                continue
-            # Skip automated / IDE-injected fragments
-            is_automated = False
-            for pattern in AUTOMATED_MESSAGE_PATTERNS:
-                if pattern in text:
-                    is_automated = True
-                    break
-            if is_automated:
-                continue
-            # Skip IDE context tags (e.g. <ide_opened_file>)
-            if text.startswith("<ide_") or text.startswith("<command-"):
-                continue
-            human_parts.append(text)
-
-        if human_parts:
-            return " ".join(human_parts)
-
+        return _extract_list_content(content)
     return None
 
 
@@ -145,11 +144,12 @@ def _count_written_lines(tool_name: str, tool_input: dict) -> int:
             return len(content.splitlines()) if content else 0
         elif tool_name == "Edit":
             new_string = tool_input.get("new_string", "")
-            return len(new_string.splitlines()) if new_string else 0
+            lines = len(new_string.splitlines()) if new_string else 0
+            return min(lines, 100)  # Edit 1회당 최대 100줄
         elif tool_name == "MultiEdit":
             edits = tool_input.get("edits", [])
             return sum(
-                len(e.get("new_string", "").splitlines())
+                min(len(e.get("new_string", "").splitlines()), 100)
                 for e in edits
                 if isinstance(e, dict)
             )

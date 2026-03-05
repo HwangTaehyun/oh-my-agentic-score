@@ -164,6 +164,7 @@ class ParallelismMetrics(BaseModel):
     max_concurrent_agents: int = 0
     total_sub_agents: int = 0
     peak_parallel_tools: int = 0
+    peak_temporal_overlap: int = 0
     p_thread_score: float = 0.0
 
 

@@ -68,6 +68,39 @@ def _request_device_code(github_client_id: str) -> Optional[dict]:
         return None
 
 
+def _request_token_poll(
+    github_client_id: str, device_code: str
+) -> Optional[dict]:
+    """Make a single token poll request to GitHub. Returns JSON or None."""
+    try:
+        resp = requests.post(
+            GITHUB_DEVICE_TOKEN_URL,
+            json={
+                "client_id": github_client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        return resp.json()
+    except requests.RequestException:
+        return None
+
+
+def _handle_poll_error(error: str, description: str) -> Optional[str]:
+    """Handle a GitHub poll error. Returns error message or None for retryable."""
+    terminal_errors = {
+        "expired_token": "Device code expired. Please try again.",
+        "access_denied": "Authorization denied by user.",
+    }
+    if error in terminal_errors:
+        return terminal_errors[error]
+    if error not in ("authorization_pending", "slow_down"):
+        return f"GitHub error: {description}"
+    return None
+
+
 def _poll_for_token(
     github_client_id: str, device_code: str, interval: int, expires_in: int
 ) -> Optional[str]:
@@ -82,44 +115,25 @@ def _poll_for_token(
         while time.time() < deadline:
             time.sleep(poll_interval)
 
-            try:
-                resp = requests.post(
-                    GITHUB_DEVICE_TOKEN_URL,
-                    json={
-                        "client_id": github_client_id,
-                        "device_code": device_code,
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    },
-                    headers={"Accept": "application/json"},
-                    timeout=10,
-                )
-                data = resp.json()
-            except requests.RequestException:
+            data = _request_token_poll(github_client_id, device_code)
+            if data is None:
                 continue
 
             error = data.get("error")
-
-            if error == "authorization_pending":
-                # User hasn't authorized yet, keep polling
+            if not error:
+                token = data.get("access_token")
+                if token:
+                    return token
                 continue
-            elif error == "slow_down":
-                # GitHub wants us to slow down
+
+            if error == "slow_down":
                 poll_interval += 5
                 continue
-            elif error == "expired_token":
-                console.print("[red]Device code expired. Please try again.[/red]")
-                return None
-            elif error == "access_denied":
-                console.print("[red]Authorization denied by user.[/red]")
-                return None
-            elif error:
-                console.print(f"[red]GitHub error: {data.get('error_description', error)}[/red]")
-                return None
 
-            # Success — got access token
-            token = data.get("access_token")
-            if token:
-                return token
+            msg = _handle_poll_error(error, data.get("error_description", error))
+            if msg:
+                console.print(f"[red]{msg}[/red]")
+                return None
 
     console.print("[red]Authorization timed out. Please try again.[/red]")
     return None

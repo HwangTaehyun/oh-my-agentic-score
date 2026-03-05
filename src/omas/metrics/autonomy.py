@@ -11,8 +11,9 @@ Composite l_thread_score (0-10 scale, log normalized):
 from __future__ import annotations
 
 import math
+from datetime import datetime
 
-from omas.models import AutonomyMetrics, SessionData
+from omas.models import IDLE_GAP_THRESHOLD, AutonomyMetrics, SessionData
 
 
 def compute_autonomy(data: SessionData) -> AutonomyMetrics:
@@ -47,10 +48,24 @@ def compute_autonomy(data: SessionData) -> AutonomyMetrics:
     )
 
 
+def _active_duration_minutes(timestamps: list[datetime]) -> float:
+    """Sum active time between consecutive timestamps, capping idle gaps."""
+    if len(timestamps) < 2:
+        return 0.0
+    total = 0.0
+    for i in range(1, len(timestamps)):
+        gap = timestamps[i] - timestamps[i - 1]
+        if gap <= IDLE_GAP_THRESHOLD:
+            total += gap.total_seconds()
+        else:
+            total += IDLE_GAP_THRESHOLD.total_seconds()
+    return total / 60.0
+
+
 def _fully_autonomous_stretch(data, activity_timestamps, tool_calls):
     """Compute stretch when there are no human messages (fully autonomous)."""
     if len(activity_timestamps) >= 2:
-        stretch = (activity_timestamps[-1] - activity_timestamps[0]).total_seconds() / 60.0
+        stretch = _active_duration_minutes(activity_timestamps)
     elif data.duration_minutes > 0:
         stretch = data.duration_minutes
     else:
@@ -67,7 +82,7 @@ def _human_interleaved_stretch(data, human_msgs, tool_calls, activity_timestamps
     if data.start_time:
         before = [ts for ts in activity_timestamps if ts < human_msgs[0].timestamp]
         if before:
-            gap = (before[-1] - data.start_time).total_seconds() / 60.0
+            gap = _active_duration_minutes([data.start_time] + before)
             longest = max(longest, gap)
             max_tools = max(max_tools, len(before))
 
@@ -77,7 +92,7 @@ def _human_interleaved_stretch(data, human_msgs, tool_calls, activity_timestamps
         calls = [t for t in tool_calls if start < t.timestamp < end]
         acts = [ts for ts in activity_timestamps if start < ts < end]
         if acts:
-            longest = max(longest, (acts[-1] - start).total_seconds() / 60.0)
+            longest = max(longest, _active_duration_minutes([start] + acts))
         max_tools = max(max_tools, len(calls))
 
     # Segment after last human message
@@ -85,7 +100,7 @@ def _human_interleaved_stretch(data, human_msgs, tool_calls, activity_timestamps
     after_acts = [ts for ts in activity_timestamps if ts > last]
     after_calls = [t for t in tool_calls if t.timestamp > last]
     if after_acts:
-        longest = max(longest, (after_acts[-1] - last).total_seconds() / 60.0)
+        longest = max(longest, _active_duration_minutes([last] + after_acts))
     max_tools = max(max_tools, len(after_calls))
 
     return longest, max_tools
