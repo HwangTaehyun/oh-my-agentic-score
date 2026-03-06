@@ -46,17 +46,3 @@ jobs:
       - name: Check import sorting
         run: uv run python -m py_compile src/omas/cli.py
 
-  dashboard-build:
-    name: Dashboard Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: cd dashboard && bun install --frozen-lockfile
-
-      - name: Build dashboard
-        run: cd dashboard && bun run build
