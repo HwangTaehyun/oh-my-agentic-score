@@ -11,7 +11,6 @@ Composite l_thread_score (0-10 scale, log normalized):
 from __future__ import annotations
 
 import math
-import statistics
 from datetime import datetime
 
 from omas.models import IDLE_GAP_THRESHOLD, AutonomyMetrics, SessionData
@@ -160,21 +159,6 @@ def _compute_p75(stretches: list[float]) -> float:
     idx = min(idx, len(stretches_sorted) - 1)
     return stretches_sorted[idx]
 
-
-def _compute_consistency_factor(stretches: list[float]) -> float:
-    """Compute consistency factor based on coefficient of variation.
-
-    consistency = 1.0 / (1.0 + 0.5 * cv), where cv = stdev / mean.
-    Single-stretch sessions get perfect consistency (1.0).
-    """
-    if len(stretches) <= 1:
-        return 1.0
-    mean = statistics.mean(stretches)
-    if mean == 0:
-        return 1.0
-    stdev = statistics.stdev(stretches)
-    cv = stdev / mean
-    return 1.0 / (1.0 + 0.5 * cv)
 
 
 def _count_max_consecutive_assistant_turns(data: SessionData) -> int:

@@ -25,7 +25,7 @@ from omas.config import CLAUDE_DIR, DEFAULT_SERVER_URL, MINIMUM_TOOL_CALLS
 from omas.display.dashboard import render_session_dashboard
 from omas.display.report import render_report
 from omas.display.trend import render_trend
-from omas.metrics.aggregator import compute_session_metrics
+from omas.metrics.aggregator import compute_overall_score, compute_session_metrics
 from omas.metrics.qualifier import consistency_score as calc_consistency
 from omas.metrics.qualifier import is_qualified, session_weight
 from omas.models import ComparisonMetrics, ExportData, ProjectSummary, SessionMetrics, ThreadType
@@ -158,39 +158,48 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
     console.print("[bold]Scanning Claude Code sessions...[/bold]")
 
     sessions = discover_sessions(
-        claude_dir=claude_dir,
-        project_filter=project,
-        since=since_dt,
+        claude_dir=claude_dir, project_filter=project, since=since_dt,
     )
-
     if not sessions:
         console.print("[yellow]No sessions found.[/yellow]")
         return
 
     store = MetricsStore()
+    sessions = _filter_new_sessions(sessions, store, force)
+    if sessions is None:
+        return
 
-    # Unless --force, skip sessions already in the database
+    parsed_results, counts = _parse_all_sessions(sessions)
+    _apply_cross_session_scores(parsed_results, store)
+
+    console.print(
+        f"[green]Scan complete: {counts['success']} sessions analyzed, "
+        f"{counts['skipped']} empty skipped, {counts['error']} errors[/green]"
+    )
+    console.print(f"Database: {store.db_path}")
+
+
+def _filter_new_sessions(sessions: list, store: MetricsStore, force: bool):
+    """Filter to new sessions only, unless --force. Returns None if nothing to do."""
     if not force:
         stored_ids = store.get_stored_session_ids()
         new_sessions = [s for s in sessions if s["jsonl_path"].stem not in stored_ids]
         if not new_sessions:
             console.print(f"[dim]All {len(sessions)} sessions already analyzed. Use --force to re-analyze.[/dim]")
-            return
+            return None
         console.print(f"Found {len(new_sessions)} new sessions (of {len(sessions)} total, use --force to re-analyze all)")
-        sessions = new_sessions
-    else:
-        console.print(f"Found {len(sessions)} sessions (force re-analyze)")
+        return new_sessions
+    console.print(f"Found {len(sessions)} sessions (force re-analyze)")
+    return sessions
 
-    success_count = 0
-    skipped_count = 0
-    error_count = 0
 
-    # Phase 1: Parse all sessions and compute metrics with default concurrent_sessions=1
+def _parse_all_sessions(sessions: list) -> tuple[list, dict]:
+    """Phase 1: Parse sessions and compute initial metrics. Returns (results, counts)."""
     parsed_results = []
+    counts = {"success": 0, "skipped": 0, "error": 0}
 
     with Progress() as progress:
         task = progress.add_task("Analyzing sessions...", total=len(sessions))
-
         for session_info in sessions:
             try:
                 data = parse_session(
@@ -205,22 +214,26 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
                     project_path=session_info["project_path"],
                     project_hash=session_info["project_hash"],
                 )
-
-                # Skip sessions with no tool calls (no agentic work)
                 if metrics.total_tool_calls == 0:
-                    skipped_count += 1
+                    counts["skipped"] += 1
                     progress.advance(task)
                     continue
 
                 parsed_results.append((session_info, data, metrics))
-                success_count += 1
+                counts["success"] += 1
             except Exception as e:
-                error_count += 1
-
+                counts["error"] += 1
+                if os.environ.get("OMAS_DEBUG"):
+                    console.print(f"  [dim red]Error: {e}[/dim red]")
             progress.advance(task)
 
-    # Phase 2: Compute cross-session P-thread scores from time overlaps
+    return parsed_results, counts
+
+
+def _apply_cross_session_scores(parsed_results: list, store: MetricsStore):
+    """Phase 2-3: Compute cross-session parallelism and save all metrics."""
     from omas.metrics.parallelism import compute_cross_session_parallelism
+    from omas.classifier.thread_classifier import classify_thread
 
     session_ranges = [
         (data.session_id, data.start_time, data.end_time)
@@ -229,27 +242,19 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
     ]
     concurrent_map = compute_cross_session_parallelism(session_ranges)
 
-    # Phase 3: Update P-thread scores for sessions with concurrent > 1, then save
-    from omas.classifier.thread_classifier import classify_thread
-
-    for session_info, data, metrics in parsed_results:
+    for _session_info, data, metrics in parsed_results:
         concurrent = concurrent_map.get(data.session_id, 1)
         if concurrent > 1:
             metrics.parallelism.concurrent_sessions = concurrent
             metrics.parallelism.p_thread_score = min(float(concurrent), 10.0)
-            # Re-classify thread type with updated concurrent_sessions
             metrics.thread_type = classify_thread(
                 data, metrics.parallelism, metrics.autonomy,
                 metrics.density, metrics.trust,
             )
-            metrics.overall_score = _recompute_overall(metrics)
+            metrics.overall_score = compute_overall_score(
+                metrics.parallelism, metrics.autonomy, metrics.density, metrics.trust
+            )
         store.save_metrics(metrics)
-
-    console.print(
-        f"[green]Scan complete: {success_count} sessions analyzed, "
-        f"{skipped_count} empty skipped, {error_count} errors[/green]"
-    )
-    console.print(f"Database: {store.db_path}")
 
 
 @cli.command("list")
@@ -389,12 +394,14 @@ def dashboard(ctx, skip_scan: bool, skip_upload: bool, server_url: str):
         claude_dir = ctx.obj["claude_dir"]
         discovered = discover_sessions(claude_dir=claude_dir)
         store = MetricsStore()
-        stored_count = store.count()
-        if len(discovered) > stored_count:
-            console.print(f"[dim]New sessions detected ({len(discovered)} found, {stored_count} stored)[/dim]")
+        stored_ids = set(store.get_all_session_ids())
+        discovered_ids = set(s["session_id"] for s in discovered)
+        new_sessions = discovered_ids - stored_ids
+        if new_sessions:
+            console.print(f"[dim]New sessions detected ({len(new_sessions)} new of {len(discovered)} found)[/dim]")
             ctx.invoke(scan)
         else:
-            console.print(f"[dim]No new sessions ({stored_count} stored). Skipping scan.[/dim]")
+            console.print(f"[dim]No new sessions ({len(stored_ids)} stored). Skipping scan.[/dim]")
 
     # Step 2: Export JSON for dashboard
     ctx.invoke(export)
@@ -533,18 +540,6 @@ def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSumm
     summaries.sort(key=lambda p: p.session_count, reverse=True)
     return summaries
 
-
-def _recompute_overall(metrics: SessionMetrics) -> float:
-    """Recompute overall score after updating individual dimension scores.
-
-    Mirrors the logic in aggregator._compute_overall_score but operates
-    on a SessionMetrics object rather than individual metric objects.
-    """
-    p_norm = min(metrics.parallelism.p_thread_score, 10.0)
-    l_norm = min(metrics.autonomy.l_thread_score, 10.0)
-    b_norm = min(metrics.density.b_thread_score + metrics.density.ai_line_bonus, 10.0)
-    f_norm = min(metrics.trust.z_thread_score, 10.0)
-    return round((p_norm + l_norm + b_norm + f_norm) / 4.0, 2)
 
 
 def _avg(values: list[float]) -> float:

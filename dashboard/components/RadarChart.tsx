@@ -16,7 +16,7 @@ export default function RadarChart({ sessions }: RadarChartProps) {
 
   const avgMore = avg((s) => Math.min(s.parallelism.p_thread_score, 10));
   const avgLonger = avg((s) => s.autonomy.l_thread_score);
-  const avgThicker = avg((s) => Math.min(s.density.b_thread_score, 10));
+  const avgThicker = avg((s) => Math.min(s.density.b_thread_score + (s.density.ai_line_bonus || 0), 10));
   const avgFewer = avg((s) => s.trust.z_thread_score);
 
   const data = {
@@ -169,7 +169,7 @@ export default function RadarChart({ sessions }: RadarChartProps) {
               className="text-lg font-bold font-mono leading-none"
               style={{ color: s.color }}
             >
-              {s.value.toFixed(1)}
+              {s.value.toFixed(2)}
             </div>
             <div className="text-[10px] font-semibold mt-1" style={{ color: s.color + "AA" }}>
               {s.label}

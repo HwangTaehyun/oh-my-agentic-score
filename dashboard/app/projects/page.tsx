@@ -22,11 +22,14 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
 
-  const project = data.projects.find((p) => p.project_hash === slug);
-  if (!project) return <div className="text-red-400 p-8">Project not found: {slug}</div>;
+  const project = useMemo(
+    () => data.projects.find((p) => p.project_hash === slug),
+    [data.projects, slug]
+  );
 
   // Filter sessions by period
   const filteredSessions = useMemo(() => {
+    if (!project) return [];
     // First filter by project
     const projectSessions = data.sessions.filter((s) => s.project_path === project.project_path);
 
@@ -44,7 +47,9 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
     // For predefined periods (daily, weekly, monthly, yearly)
     const sinceDate = getPeriodSinceDate(period);
     return filterByPeriod(projectSessions, sinceDate, undefined);
-  }, [data.sessions, project.project_path, period, since, until]);
+  }, [data.sessions, project, period, since, until]);
+
+  if (!project) return <div className="text-red-400 p-8">Project not found: {slug}</div>;
 
   const totalTools = filteredSessions.reduce((s, x) => s + x.total_tool_calls, 0);
   const avgScore = filteredSessions.length > 0
@@ -55,7 +60,7 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
     <ChartProvider>
       <div className="space-y-6">
         <div>
-          <a href="/projects/" className="text-gray-400 hover:text-white text-sm">&larr; Back</a>
+          <Link href="/projects/" className="text-gray-400 hover:text-white text-sm">&larr; Back</Link>
           <h1 className="text-2xl font-bold text-white mt-2">{getProjectName(project.project_path)}</h1>
           <p className="text-sm text-gray-400 mt-1">{project.project_path}</p>
         </div>
@@ -78,9 +83,17 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
           <ThreadTypePieChart sessions={filteredSessions} />
         </div>
 
-        <TrendLineChart sessions={filteredSessions} />
-        <ToolCallBarChart sessions={filteredSessions} period={period} />
-        <SessionTable sessions={filteredSessions} />
+        {filteredSessions.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 font-mono text-sm">
+            No sessions found for the selected period.
+          </div>
+        ) : (
+          <>
+            <TrendLineChart sessions={filteredSessions} />
+            <ToolCallBarChart sessions={filteredSessions} period={period} />
+            <SessionTable sessions={filteredSessions} />
+          </>
+        )}
       </div>
     </ChartProvider>
   );
@@ -160,7 +173,7 @@ function DimensionBar({ label, value, max, color }: { label: string; value: numb
       <div className="flex-1 h-1.5 overflow-hidden" style={{ background: "#1A1A1A", borderRadius: 3 }}>
         <div className="h-full" style={{ width: `${pct}%`, backgroundColor: color, borderRadius: 3 }} />
       </div>
-      <span className="w-8 text-right font-mono" style={{ color }}>{value.toFixed(1)}</span>
+      <span className="w-8 text-right font-mono" style={{ color }}>{value.toFixed(2)}</span>
     </div>
   );
 }
@@ -236,7 +249,7 @@ function ProjectsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
-    loadMetrics().then(setData);
+    loadMetrics().then(setData).catch((e) => console.error("Failed to load metrics:", e));
     setHidden(getHiddenProjects());
   }, []);
 

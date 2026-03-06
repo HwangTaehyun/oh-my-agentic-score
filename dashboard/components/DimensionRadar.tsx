@@ -73,7 +73,7 @@ function computeRadarData(sessions: SessionMetrics[]) {
 
   const avgMore = avg((s) => Math.min(s.parallelism.p_thread_score, 10));
   const avgLonger = avg((s) => s.autonomy.l_thread_score);
-  const avgThicker = avg((s) => Math.min(s.density.b_thread_score, 10));
+  const avgThicker = avg((s) => Math.min(s.density.b_thread_score + (s.density.ai_line_bonus || 0), 10));
   const avgFewer = avg((s) => s.trust.z_thread_score);
   const vals = [avgMore, avgLonger, avgThicker, avgFewer];
 
@@ -194,7 +194,7 @@ function RadarLabels({ vertices, values, colors }: { vertices: Vertex[]; values:
               fontWeight="700"
               fontFamily="'JetBrains Mono', monospace"
             >
-              {values[i].toFixed(1)}
+              {values[i].toFixed(2)}
             </text>
           </g>
         );
@@ -226,7 +226,7 @@ function DimensionBadges({ values, colors }: { values: number[]; colors: string[
             {axis.label}
           </div>
           <div className="text-base font-bold font-mono" style={{ color: colors[i] }}>
-            {values[i].toFixed(1)}
+            {values[i].toFixed(2)}
           </div>
         </div>
       ))}

@@ -15,7 +15,7 @@ export default function TrendLineChart({ sessions }: TrendLineChartProps) {
     .filter((s) => s.timestamp)
     .sort((a, b) => a.timestamp!.localeCompare(b.timestamp!));
 
-  const labels = sorted.map((s) => format(parseISO(s.timestamp!), "MM/dd"));
+  const labels = sorted.map((s) => format(parseISO(s.timestamp!), "yy/MM/dd"));
 
   const data = {
     labels,

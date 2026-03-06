@@ -225,6 +225,11 @@ export default function OverviewPage() {
         </div>
 
         <StatsRow sessions={sessions} projects={projects} stats={stats} />
+        {sessions.length === 0 && (
+          <div className="text-center py-12 text-gray-500 font-mono text-sm">
+            No sessions found for the selected period.
+          </div>
+        )}
         <OverviewCharts sessions={sessions} period={period} />
       </div>
     </ChartProvider>

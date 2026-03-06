@@ -32,7 +32,7 @@ class ToolCall(BaseModel):
     name: str
     tool_use_id: str
     timestamp: datetime
-    is_subagent: bool = False
+    is_subagent: bool = False  # TODO: rename to is_sub_agent (naming inconsistency; kept for JSON/SQLite backward compat)
     agent_id: Optional[str] = None
 
 
@@ -85,7 +85,7 @@ class SessionData(BaseModel):
 
     # Sub-agent data
     sub_agents: list[SubAgentInfo] = Field(default_factory=list)
-    subagent_jsonl_count: int = 0
+    subagent_jsonl_count: int = 0  # TODO: rename to sub_agent_jsonl_count (naming inconsistency; kept for JSON/SQLite backward compat)
 
     # Token usage
     total_usage: TokenUsage = Field(default_factory=TokenUsage)
@@ -106,13 +106,13 @@ class SessionData(BaseModel):
 
     @property
     def duration_minutes(self) -> float:
-        """Active session duration in minutes (idle gaps excluded).
+        """Active session duration in minutes.
 
         Collects all activity timestamps (tool calls, user messages, assistant
-        messages), sorts them, and sums only the gaps that are shorter than
-        ``IDLE_GAP_THRESHOLD``.  This prevents idle periods (e.g., user left a
-        permission prompt unanswered for hours) from inflating session duration
-        and composite score weights.
+        messages), sorts them, and sums the gaps between consecutive events.
+        Gaps shorter than ``IDLE_GAP_THRESHOLD`` are counted in full; idle gaps
+        are capped at IDLE_GAP_THRESHOLD (30 min) to give partial credit for
+        sessions with occasional pauses.
         """
         if not self.start_time or not self.end_time:
             return 0.0
@@ -276,7 +276,7 @@ class ComparisonMetrics(BaseModel):
     excluded_session_count: int = 0
     weighted_overall_score: float = 0.0
     consistency_score: float = 0.0
-    composite_rank_score: float = 0.0  # weighted 80% + consistency 20%
+    composite_rank_score: float = 0.0  # weighted average score (= Cloud leaderboard formula)
 
 
 class ExportData(BaseModel):

@@ -40,7 +40,7 @@ def compute_session_metrics(
     thread_type = classify_thread(data, parallelism, autonomy, density, trust)
 
     # Compute overall score (weighted average of normalized dimension scores)
-    overall = _compute_overall_score(parallelism, autonomy, density, trust)
+    overall = compute_overall_score(parallelism, autonomy, density, trust)
 
     # Build per-tool-name usage breakdown
     tool_breakdown = _compute_tool_breakdown(data)
@@ -65,7 +65,7 @@ def compute_session_metrics(
     )
 
 
-def _compute_overall_score(
+def compute_overall_score(
     parallelism,
     autonomy,
     density,

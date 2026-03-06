@@ -74,7 +74,7 @@ function buildChartConfig(sorted: [string, number][]) {
           label: (ctx: TooltipItem<"bar">) => {
             const val = ctx.parsed.x ?? 0;
             const total = values.reduce((s, v) => s + v, 0);
-            return `${val.toLocaleString()} calls (${((val / total) * 100).toFixed(1)}%)`;
+            return `${val.toLocaleString()} calls (${total > 0 ? ((val / total) * 100).toFixed(2) : 0}%)`;
           },
         },
       },

@@ -60,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   return (
-    <html lang="ko">
+    <html lang="en">
       <head>
         <title>Oh My Agentic Score</title>
         <meta name="description" content="Oh My Agentic Score - Thread-Based Engineering Analytics" />

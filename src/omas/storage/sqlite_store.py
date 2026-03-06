@@ -83,6 +83,8 @@ class MetricsStore:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(CREATE_TABLE_SQL)
             # Migration: add columns to existing databases
             self._migrate_add_column(conn, "tool_breakdown", "TEXT")
@@ -110,6 +112,8 @@ class MetricsStore:
     def save_metrics(self, metrics: SessionMetrics):
         """Save or update session metrics."""
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 """
                 INSERT OR REPLACE INTO session_metrics (
@@ -216,6 +220,8 @@ class MetricsStore:
         query += " ORDER BY timestamp DESC"
 
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.row_factory = sqlite3.Row
             rows = conn.execute(query, params).fetchall()
 
@@ -224,6 +230,8 @@ class MetricsStore:
     def get_session(self, session_id: str) -> Optional[SessionMetrics]:
         """Load a single session's metrics."""
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM session_metrics WHERE session_id = ?",
@@ -237,14 +245,26 @@ class MetricsStore:
     def count(self) -> int:
         """Count total stored sessions."""
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             result = conn.execute("SELECT COUNT(*) FROM session_metrics").fetchone()
             return result[0] if result else 0
 
     def get_stored_session_ids(self) -> set[str]:
         """Return the set of all stored session IDs."""
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             rows = conn.execute("SELECT session_id FROM session_metrics").fetchall()
             return {row[0] for row in rows}
+
+    def get_all_session_ids(self) -> list[str]:
+        """Return a list of all stored session IDs."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            rows = conn.execute("SELECT session_id FROM session_metrics").fetchall()
+            return [row[0] for row in rows]
 
 
 def _safe_row_get(row: sqlite3.Row, key: str, default=None):
@@ -303,7 +323,10 @@ def _parse_tool_breakdown(row: sqlite3.Row) -> dict[str, int]:
 
 def _parse_thread_type(value: Optional[str]) -> ThreadType:
     """Parse thread type with fallback to BASE."""
-    return ThreadType(value) if value else ThreadType.BASE
+    try:
+        return ThreadType(value) if value else ThreadType.BASE
+    except ValueError:
+        return ThreadType.BASE
 
 
 def _build_parallelism(row: sqlite3.Row) -> ParallelismMetrics:

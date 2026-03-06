@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ExportData, PeriodType, THREAD_COLORS } from "@/lib/types";
+import { ExportData, PeriodType, THREAD_COLORS, DIMENSION_COLORS } from "@/lib/types";
 import type { SessionMetrics } from "@/lib/types";
 import {
   loadMetrics,
@@ -24,29 +25,22 @@ import ToolBreakdownChart from "@/components/ToolBreakdownChart";
 
 function DimensionCard({
   title,
-  color,
+  colorHex,
   items,
 }: {
   title: string;
-  color: string;
+  colorHex: string;
   items: [string, string | number][];
 }) {
-  const borderColors: Record<string, string> = {
-    cyan: "border-cyan-500/30",
-    green: "border-green-500/30",
-    red: "border-red-500/30",
-    yellow: "border-yellow-500/30",
-  };
-  const textColors: Record<string, string> = {
-    cyan: "text-cyan-400",
-    green: "text-green-400",
-    red: "text-red-400",
-    yellow: "text-yellow-400",
-  };
-
   return (
-    <div className={`bg-gray-900 rounded-lg border ${borderColors[color]} p-4`}>
-      <h3 className={`text-sm font-semibold ${textColors[color]} mb-3`}>{title}</h3>
+    <div
+      className="rounded-lg p-4"
+      style={{
+        background: "#0A0A0A",
+        border: `1px solid ${colorHex}30`,
+      }}
+    >
+      <h3 className="text-sm font-semibold mb-3" style={{ color: colorHex }}>{title}</h3>
       <div className="space-y-2">
         {items.map(([label, value]) => (
           <div key={label} className="flex justify-between text-sm">
@@ -65,7 +59,7 @@ function SessionDetail({ session }: { session: SessionMetrics }) {
       <div className="space-y-6">
         <div>
           <div className="flex items-center gap-3">
-            <a href="/sessions/" className="text-gray-400 hover:text-white text-sm">&larr; Back</a>
+            <Link href="/sessions/" className="text-gray-400 hover:text-white text-sm">&larr; Back</Link>
             <h1 className="text-2xl font-bold text-white">
               Session {session.session_id.slice(0, 8)}...
             </h1>
@@ -97,41 +91,41 @@ function SessionDetail({ session }: { session: SessionMetrics }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <DimensionCard
-            title="MORE (Parallelism)" color="cyan"
+            title="MORE (Parallelism)" colorHex={DIMENSION_COLORS.more}
             items={[
               ["Concurrent Agents", session.parallelism.max_concurrent_agents],
               ["Total Sub-agents", session.parallelism.total_sub_agents],
               ["Peak Parallel Tools", session.parallelism.peak_parallel_tools],
-              ["P-score", session.parallelism.p_thread_score.toFixed(1)],
+              ["P-score", session.parallelism.p_thread_score.toFixed(2)],
             ]}
           />
           <DimensionCard
-            title="LONGER (Autonomy)" color="green"
+            title="LONGER (Autonomy)" colorHex={DIMENSION_COLORS.longer}
             items={[
-              ["Autonomous Stretch", `${session.autonomy.longest_autonomous_stretch_minutes.toFixed(1)} min`],
+              ["Autonomous Stretch", `${session.autonomy.longest_autonomous_stretch_minutes.toFixed(2)} min`],
               ["Max Tools Between Human", session.autonomy.max_tool_calls_between_human],
-              ["Session Duration", `${session.autonomy.session_duration_minutes.toFixed(1)} min`],
-              ["L-score", session.autonomy.l_thread_score.toFixed(1)],
+              ["Session Duration", `${session.autonomy.session_duration_minutes.toFixed(2)} min`],
+              ["L-score", session.autonomy.l_thread_score.toFixed(2)],
             ]}
           />
           <DimensionCard
-            title="THICKER (Density)" color="red"
+            title="THICKER (Density)" colorHex={DIMENSION_COLORS.thicker}
             items={[
-              ["Tool Calls/min", session.density.tool_calls_per_minute.toFixed(1)],
+              ["Tool Calls/min", session.density.tool_calls_per_minute.toFixed(2)],
               ["Total Tool Calls", session.density.total_tool_calls],
               ["Sub-agent Depth", session.density.max_sub_agent_depth],
               ["Tokens/min", session.density.tokens_per_minute.toFixed(0)],
-              ["B-score", session.density.b_thread_score.toFixed(1)],
+              ["B-score", session.density.b_thread_score.toFixed(2)],
             ]}
           />
           <DimensionCard
-            title="FEWER (Trust)" color="yellow"
+            title="FEWER (Trust)" colorHex={DIMENSION_COLORS.fewer}
             items={[
-              ["Tools/Human Msg", session.trust.tool_calls_per_human_message.toFixed(1)],
-              ["Asst/Human Ratio", session.trust.assistant_per_human_ratio.toFixed(1)],
+              ["Tools/Human Msg", session.trust.tool_calls_per_human_message.toFixed(2)],
+              ["Asst/Human Ratio", session.trust.assistant_per_human_ratio.toFixed(2)],
               ["Ask User Count", session.trust.ask_user_count],
-              ["Autonomous %", `${session.trust.autonomous_tool_call_pct.toFixed(1)}%`],
-              ["Z-score", session.trust.z_thread_score.toFixed(1)],
+              ["Autonomous %", `${session.trust.autonomous_tool_call_pct.toFixed(2)}%`],
+              ["Z-score", session.trust.z_thread_score.toFixed(2)],
             ]}
           />
         </div>
@@ -161,7 +155,7 @@ function SessionsPage() {
   const [project, setProject] = useState("");
 
   useEffect(() => {
-    loadMetrics().then(setData);
+    loadMetrics().then(setData).catch((e) => console.error("Failed to load metrics:", e));
   }, []);
 
   if (!data) {
@@ -175,22 +169,50 @@ function SessionsPage() {
     return <SessionDetail session={session} />;
   }
 
-  // List mode: apply filters
-  let sessions = data.sessions;
+  // List mode: apply filters (wrapped in useMemo in the component below)
+  return <SessionsList data={data} period={period} setPeriod={setPeriod} since={since} setSince={setSince} until={until} setUntil={setUntil} project={project} setProject={setProject} />;
+}
 
-  if (period === "all") {
-    // No time filter
-  } else if (period === "custom") {
-    if (since) sessions = filterByPeriod(sessions, new Date(since));
-    if (until) sessions = filterByPeriod(sessions, undefined, new Date(until));
-  } else {
-    const periodSince = getPeriodSinceDate(period);
-    if (periodSince) sessions = filterByPeriod(sessions, periodSince);
-  }
+function SessionsList({
+  data,
+  period,
+  setPeriod,
+  since,
+  setSince,
+  until,
+  setUntil,
+  project,
+  setProject,
+}: {
+  data: ExportData;
+  period: PeriodType;
+  setPeriod: (p: PeriodType) => void;
+  since: string;
+  setSince: (s: string) => void;
+  until: string;
+  setUntil: (u: string) => void;
+  project: string;
+  setProject: (p: string) => void;
+}) {
+  const sessions = useMemo(() => {
+    let filtered = data.sessions;
 
-  if (project) sessions = filterByProject(sessions, project);
+    if (period === "all") {
+      // No time filter
+    } else if (period === "custom") {
+      if (since) filtered = filterByPeriod(filtered, new Date(since));
+      if (until) filtered = filterByPeriod(filtered, undefined, new Date(until));
+    } else {
+      const periodSince = getPeriodSinceDate(period);
+      if (periodSince) filtered = filterByPeriod(filtered, periodSince);
+    }
 
-  const projects = getUniqueProjects(data.sessions);
+    if (project) filtered = filterByProject(filtered, project);
+
+    return filtered;
+  }, [data, period, since, until, project]);
+
+  const projects = useMemo(() => getUniqueProjects(data.sessions), [data.sessions]);
 
   return (
     <ChartProvider>
@@ -217,7 +239,13 @@ function SessionsPage() {
           <ProjectFilter projects={projects} selected={project} onChange={setProject} />
         </div>
 
-        <SessionTable sessions={sessions} />
+        {sessions.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 font-mono text-sm">
+            No sessions found for the selected period.
+          </div>
+        ) : (
+          <SessionTable sessions={sessions} />
+        )}
       </div>
     </ChartProvider>
   );

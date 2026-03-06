@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from collections import Counter, defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -114,9 +116,16 @@ def _load_queue() -> dict:
 
 
 def _save_queue(queue: dict) -> None:
-    """Save the upload queue to disk."""
+    """Save the upload queue to disk using an atomic write (write-then-rename)."""
     OMAS_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOAD_QUEUE_PATH.write_text(json.dumps(queue, indent=2))
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=OMAS_DIR, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            json.dump(queue, f, indent=2)
+        os.replace(tmp_path, str(UPLOAD_QUEUE_PATH))
+    except Exception:
+        os.unlink(tmp_path)
+        raise
 
 
 def _display_dry_run(

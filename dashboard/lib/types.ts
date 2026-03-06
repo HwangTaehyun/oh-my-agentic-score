@@ -13,6 +13,7 @@ export interface ParallelismMetrics {
   peak_parallel_tools: number;
   concurrent_sessions?: number;
   p_thread_score: number;
+  peak_temporal_overlap?: number;
 }
 
 export interface AutonomyMetrics {
@@ -21,6 +22,8 @@ export interface AutonomyMetrics {
   session_duration_minutes: number;
   max_consecutive_assistant_turns: number;
   l_thread_score: number;
+  p75_autonomous_stretch_minutes?: number;
+  consistency_factor?: number;
 }
 
 export interface DensityMetrics {
@@ -31,6 +34,9 @@ export interface DensityMetrics {
   b_thread_score: number;
   ai_written_lines: number;
   ai_line_bonus: number;
+  team_action_calls?: number;
+  team_query_calls?: number;
+  effective_team_score?: number;
 }
 
 export interface TrustMetrics {
@@ -63,6 +69,7 @@ export interface SessionMetrics {
   tool_breakdown: Record<string, number>;
   ai_written_lines: number;
   overall_score: number;
+  score_formula_version?: string;
 }
 
 export interface ProjectSummary {
@@ -70,6 +77,8 @@ export interface ProjectSummary {
   project_hash: string;
   session_count: number;
   total_tool_calls: number;
+  valid_sessions?: number;
+  excluded_sessions?: number;
   // Raw dimension averages
   avg_parallelism_score: number;
   avg_autonomy_score: number;
@@ -115,10 +124,10 @@ export const THREAD_COLORS: Record<ThreadType, string> = {
 };
 
 export const DIMENSION_COLORS = {
-  more: "#06B6D4",
-  longer: "#22C55E",
-  thicker: "#EF4444",
-  fewer: "#EAB308",
+  more: "#00FF88",    // neon green (Parallelism)
+  longer: "#FFD600",  // bright yellow (Autonomy)
+  thicker: "#FF6B35", // orange (Density)
+  fewer: "#A855F7",   // purple (Trust)
 };
 
 /** Color palette for tool categories in the breakdown chart. */
