@@ -27,7 +27,7 @@ from omas.display.report import render_report
 from omas.display.trend import render_trend
 from omas.metrics.aggregator import compute_overall_score, compute_session_metrics
 from omas.metrics.qualifier import consistency_score as calc_consistency
-from omas.metrics.qualifier import is_qualified, session_weight
+from omas.metrics.qualifier import is_qualified
 from omas.models import ComparisonMetrics, ExportData, ProjectSummary, SessionMetrics, ThreadType
 from omas.parser.discovery import discover_sessions, find_session_by_id
 from omas.parser.session_parser import parse_session
@@ -333,22 +333,20 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
     # Build project summaries from qualified sessions only (= Cloud)
     projects = _build_project_summaries(qualified)
 
-    # Compute comparison metrics from qualified sessions
-    total_weight = sum(session_weight(s) for s in qualified)
-    weighted_score = (
-        sum(s.overall_score * session_weight(s) for s in qualified) / total_weight
-        if total_weight > 0
+    # Compute comparison metrics from qualified sessions (simple average = Cloud)
+    simple_avg = (
+        sum(s.overall_score for s in qualified) / len(qualified)
+        if qualified
         else 0.0
     )
     cons_score = calc_consistency(qualified)
-    composite = weighted_score  # = Cloud leaderboard (no consistency penalty)
 
     comparison = ComparisonMetrics(
         qualified_session_count=len(qualified),
         excluded_session_count=excluded,
-        weighted_overall_score=round(weighted_score, 2),
+        weighted_overall_score=round(simple_avg, 2),
         consistency_score=round(cons_score, 1),
-        composite_rank_score=round(composite, 2),
+        composite_rank_score=round(simple_avg, 2),
     )
 
     export_data = ExportData(
