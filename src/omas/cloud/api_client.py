@@ -39,6 +39,15 @@ class ConnectRPCError(Exception):
         super().__init__(f"[{code}] {message}")
 
 
+def _get_cli_version() -> str:
+    """Get package version for User-Agent header."""
+    try:
+        from importlib.metadata import version
+        return version("oh-my-agentic-score")
+    except Exception:
+        return "0.0.0"
+
+
 class OmasCloudClient:
     """Connect-RPC client for communicating with OMAS Cloud API.
 
@@ -56,7 +65,7 @@ class OmasCloudClient:
         self.session.headers.update({
             "Content-Type": "application/json",
             "Connect-Protocol-Version": "1",
-            "User-Agent": "omas-cli/0.3.2",
+            "User-Agent": f"omas-cli/{_get_cli_version()}",
         })
         if token:
             self.set_token(token)

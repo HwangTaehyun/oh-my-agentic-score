@@ -119,31 +119,7 @@ def report(ctx, project: Optional[str], since: Optional[str], limit: int):
 
     render_report(sessions[:limit])
 
-    # Display comparison metrics
-    from rich.panel import Panel
-
-    qualified = [s for s in sessions if is_qualified(s)]
-    excluded = len(sessions) - len(qualified)
-    if qualified:
-        total_weight = sum(session_weight(s) for s in qualified)
-        weighted_score = (
-            sum(s.overall_score * session_weight(s) for s in qualified) / total_weight
-            if total_weight > 0
-            else 0.0
-        )
-        cons_score = calc_consistency(qualified)
-        composite = weighted_score * 0.8 + cons_score * 0.2
-
-        console.print()
-        console.print(
-            Panel(
-                f"Qualified: {len(qualified)} | Excluded: {excluded}\n"
-                f"Weighted Score: {weighted_score:.2f} | Consistency: {cons_score:.1f} | "
-                f"Composite Rank: {composite:.2f}",
-                title="[bold]Fair Comparison Metrics[/bold]",
-                border_style="cyan",
-            )
-        )
+    # Note: weighted avg + qualified count now displayed by render_report() itself
 
 
 @cli.command()
@@ -355,7 +331,7 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
             else 0.0
         )
         cons_score = calc_consistency(qualified)
-        composite = weighted_score * 0.8 + cons_score * 0.2
+        composite = weighted_score  # = Cloud leaderboard (no consistency penalty)
     else:
         weighted_score = 0.0
         cons_score = 5.0
