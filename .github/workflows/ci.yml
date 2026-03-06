@@ -26,7 +26,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: mkdir -p dashboard/out && touch dashboard/out/index.html && uv sync --dev
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
@@ -41,7 +41,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: mkdir -p dashboard/out && touch dashboard/out/index.html && uv sync --dev
 
       - name: Check import sorting
         run: uv run python -m py_compile src/omas/cli.py
