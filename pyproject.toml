@@ -1,6 +1,6 @@
 [project]
 name = "oh-my-agentic-score"
-version = "0.8.4"
+version = "0.8.5"
 description = "Measure agentic coding performance using Thread-Based Engineering framework"
 requires-python = ">=3.11"
 license = "MIT"
