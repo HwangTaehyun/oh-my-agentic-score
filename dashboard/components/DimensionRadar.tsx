@@ -260,7 +260,7 @@ export default function DimensionRadar({ sessions }: DimensionRadarProps) {
         <h3 className="text-sm font-semibold text-gray-300">4-Dimension Radar</h3>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-gray-500 font-mono">OVERALL</span>
-          <span className="text-lg font-bold font-mono" style={{ color: "#00FF88" }}>{overallAvg.toFixed(1)}</span>
+          <span className="text-lg font-bold font-mono" style={{ color: "#00FF88" }}>{overallAvg.toFixed(2)}</span>
           <span className="text-[10px] text-gray-600 font-mono">/ 10</span>
         </div>
       </div>

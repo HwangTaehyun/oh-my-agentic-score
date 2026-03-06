@@ -105,6 +105,37 @@ function persistHiddenProjects(hashes: string[]) {
   localStorage.setItem(HIDDEN_PROJECTS_KEY, JSON.stringify(hashes));
 }
 
+function QualifiedInfoIcon({ excluded }: { excluded: number }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block ml-1.5 align-middle">
+      <span
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold cursor-help"
+        style={{ background: "#2f2f2f", color: "#8a8a8a", border: "1px solid #444" }}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      >
+        i
+      </span>
+      {show && (
+        <span
+          className="absolute left-6 top-1/2 -translate-y-1/2 z-50 whitespace-nowrap text-[11px] font-mono px-3 py-2 rounded-md shadow-lg"
+          style={{ background: "#1A1A1A", border: "1px solid #2f2f2f", color: "#ccc" }}
+        >
+          Only <span style={{ color: "#00FF88" }}>qualified</span> sessions are shown
+          <br />
+          (duration &ge; 5m, tool calls &ge; 10, human msgs &ge; 1)
+          {excluded > 0 && (
+            <span style={{ color: "#FFD600" }}>
+              <br />{excluded} sessions excluded
+            </span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ProjectsHero({ count, hiddenCount, comparison }: { count: number; hiddenCount: number; comparison?: { qualified_session_count: number; excluded_session_count: number } }) {
   return (
     <div>
@@ -114,13 +145,9 @@ function ProjectsHero({ count, hiddenCount, comparison }: { count: number; hidde
       <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Projects</h1>
       <p className="text-sm font-mono mt-1" style={{ color: "#8a8a8a" }}>
         {count} projects tracked
+        <QualifiedInfoIcon excluded={comparison?.excluded_session_count ?? 0} />
         {hiddenCount > 0 && <span style={{ color: "#666" }}> ({hiddenCount} hidden)</span>}
       </p>
-      {comparison && comparison.excluded_session_count > 0 && (
-        <p className="text-[11px] font-mono mt-2 px-3 py-1.5 rounded-md inline-block" style={{ color: "#FFD600", background: "#1A1A00", border: "1px solid #332D00" }}>
-          {comparison.excluded_session_count} sessions excluded (requires: duration &ge; 5m, tool calls &ge; 10, human messages &ge; 1)
-        </p>
-      )}
     </div>
   );
 }
