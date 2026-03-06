@@ -1,9 +1,12 @@
-# OMAS Scoring v2.1 최종 완전 가이드
+# OMAS Scoring v2.2 최종 완전 가이드
 
-**버전**: v2.1
-**날짜**: 2026-03-06
+**버전**: v2.2
+**날짜**: 2026-03-07
 **테스트**: 112/112 통과 ✅
 **재현 가능**: 100% (실제 파일 완전 포함)
+
+> **v2.2 변경사항**: Longer 차원에서 P75 → P90 변경. 90번째 백분위수를 사용하여 거의 최장 구간을 보상하면서 극단적 이상치를 제외합니다.
+> 아래 코드 스냅샷은 v2.1 기준이며, 실제 구현은 `src/omas/metrics/autonomy.py`를 참조하세요.
 
 ---
 
@@ -24,10 +27,11 @@
 ### 문제 진화
 - **v1.0**: MAX 편향, COUNT-only
 - **v2.0**: 이중 페널티 (P75 + CV)
-- **v2.1**: P75 * 2.5 (CV 제거) ✅
+- **v2.1**: P75 * 2.5 (CV 제거)
+- **v2.2**: P90 * 2.5 (P75→P90 변경) ✅
 
 ### 최종 솔루션
-- Longer: `log1p(P75) * 2.5`
+- Longer: `log1p(P90) * 2.5`
 - Thicker: Multi-factor + Anti-gaming
 - Filter: 10+ tools
 - **P-thread 버그 수정**
@@ -38,7 +42,7 @@
 
 | 파라미터 | 강도 | 근거 |
 |---------|------|------|
-| P75 | ⭐⭐⭐ | Sentry + 실제 데이터 |
+| P90 | ⭐⭐⭐ | Sentry + 실제 데이터 |
 | 2.5 | ⭐⭐⭐ | Pomodoro (BMC) |
 | CV 제거 | ⭐⭐⭐ | Nature + 100 세션 |
 | Min 10 | ⭐⭐⭐ | 102 세션 검증 |
@@ -52,10 +56,10 @@
 
 ## 3. 최종 공식
 
-### Longer v2.1
+### Longer v2.2
 ```
-p75 = sorted(stretches)[int(len * 0.75)]
-score = min(log1p(p75) * 2.5, 10.0)
+p90 = sorted(stretches)[int(len * 0.90)]
+score = min(log1p(p90) * 2.5, 10.0)
 ```
 
 ### Thicker v2.1
@@ -957,7 +961,7 @@ pytest tests/
 git add .
 git commit -m "feat: OMAS v2.1 complete
 
-- Longer: P75 * 2.5 (Pomodoro, CV removed)
+- Longer: P90 * 2.5 (Pomodoro, CV removed, P75→P90 in v2.2)
 - Thicker: anti-gaming + multi-factor  
 - Filter: 10+ tools (86% noise removed)
 - Fix: P-thread classification (65 sessions)

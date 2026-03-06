@@ -67,22 +67,22 @@ Measures how long Claude runs without human intervention, using **activity-based
 **Formula:**
 
 ```
-l_thread_score = min(log1p(longest_autonomous_stretch_minutes) * 2.0, 10.0)
+l_thread_score = min(log1p(P90_stretch_minutes) * 2.5, 10.0)
 ```
 
-**Score reference:**
+P90 = 90th percentile of all autonomous stretches within a session. This rewards near-longest stretches while excluding extreme outliers.
+
+**Score reference (P90 stretch):**
 
 | Minutes | Score |
 |---------|-------|
 | 0 | 0.0 |
-| 1 | 1.4 |
-| 5 | 3.6 |
-| 10 | 4.8 |
-| 20 | 6.1 |
-| 30 | 6.9 |
-| 60 | 8.2 |
-| 120 | 9.6 |
-| 148+ | ~10.0 |
+| 1 | 1.7 |
+| 5 | 4.5 |
+| 10 | 6.0 |
+| 20 | 7.6 |
+| 30 | 8.6 |
+| 54+ | ~10.0 |
 
 **Key insight**: OMAS measures from a human message to Claude's **last activity** (tool call / assistant message) before the next human message — not to the next human message itself. This avoids inflating the time when the user goes idle while Claude has already stopped working.
 

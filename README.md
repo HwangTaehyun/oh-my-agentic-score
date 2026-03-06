@@ -194,7 +194,8 @@ OMAS parses Claude Code's JSONL session logs from `~/.claude/projects/`. For eac
 - **Activity-based** autonomy measurement (measures to Claude's last activity, not next human message)
 - **Idle gap capping** at 30 minutes to prevent inflated autonomy scores from idle periods
 - **Jaccard similarity** for fusion thread detection
-- **Log normalization** (`log1p(x) * k`) for unbounded metrics (0-10 scale; k=2.0 for autonomy/trust)
+- **P90 percentile scoring** for autonomy — 90th percentile of autonomous stretches, excluding outliers
+- **Log normalization** (`log1p(x) * k`) for unbounded metrics (0-10 scale; k=2.5 for autonomy, k=2.0 for trust)
 - **Trivial delegation filter** excludes simple human commands (≤5 tool calls) from trust ratio
 - **Plan Mode awareness** exempts AskUserQuestion during planning from penalty
 - **Human message filtering** with 24 automated patterns + minimum length (3 chars)
