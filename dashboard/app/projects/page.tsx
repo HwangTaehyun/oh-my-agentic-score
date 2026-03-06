@@ -4,7 +4,8 @@ import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ExportData, PeriodType, ProjectSummary, SessionMetrics } from "@/lib/types";
-import { loadMetrics, getProjectName, filterByProject } from "@/lib/data";
+import { loadMetrics, getProjectName, filterByProject, filterByPeriod, getPeriodSinceDate } from "@/lib/data";
+import { parseISO } from "date-fns";
 import ChartProvider from "@/components/ChartProvider";
 import ScoreCard from "@/components/ScoreCard";
 import PeriodFilter from "@/components/PeriodFilter";
@@ -24,10 +25,30 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
   const project = data.projects.find((p) => p.project_hash === slug);
   if (!project) return <div className="text-red-400 p-8">Project not found: {slug}</div>;
 
-  const sessions = data.sessions.filter((s) => s.project_path === project.project_path);
-  const totalTools = sessions.reduce((s, x) => s + x.total_tool_calls, 0);
-  const avgScore = sessions.length > 0
-    ? sessions.reduce((s, x) => s + x.overall_score, 0) / sessions.length
+  // Filter sessions by period
+  const filteredSessions = useMemo(() => {
+    // First filter by project
+    const projectSessions = data.sessions.filter((s) => s.project_path === project.project_path);
+
+    // Then filter by period
+    if (period === "all") {
+      return projectSessions;
+    }
+
+    if (period === "custom") {
+      const sinceDate = since ? parseISO(since) : undefined;
+      const untilDate = until ? parseISO(until) : undefined;
+      return filterByPeriod(projectSessions, sinceDate, untilDate);
+    }
+
+    // For predefined periods (daily, weekly, monthly, yearly)
+    const sinceDate = getPeriodSinceDate(period);
+    return filterByPeriod(projectSessions, sinceDate, undefined);
+  }, [data.sessions, project.project_path, period, since, until]);
+
+  const totalTools = filteredSessions.reduce((s, x) => s + x.total_tool_calls, 0);
+  const avgScore = filteredSessions.length > 0
+    ? filteredSessions.reduce((s, x) => s + x.overall_score, 0) / filteredSessions.length
     : 0;
 
   return (
@@ -46,20 +67,20 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
         />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <ScoreCard title="Sessions" value={project.session_count} color="cyan" />
+          <ScoreCard title="Sessions" value={filteredSessions.length} color="cyan" />
           <ScoreCard title="Tool Calls" value={totalTools.toLocaleString()} color="green" />
           <ScoreCard title="Avg Score" value={avgScore.toFixed(2)} color="purple" />
           <ScoreCard title="Main Type" value={project.dominant_thread_type} color="yellow" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <RadarChart sessions={sessions} />
-          <ThreadTypePieChart sessions={sessions} />
+          <RadarChart sessions={filteredSessions} />
+          <ThreadTypePieChart sessions={filteredSessions} />
         </div>
 
-        <TrendLineChart sessions={sessions} />
-        <ToolCallBarChart sessions={sessions} period={period} />
-        <SessionTable sessions={sessions} />
+        <TrendLineChart sessions={filteredSessions} />
+        <ToolCallBarChart sessions={filteredSessions} period={period} />
+        <SessionTable sessions={filteredSessions} />
       </div>
     </ChartProvider>
   );
