@@ -52,8 +52,10 @@ function ProjectDetail({ data, slug }: { data: ExportData; slug: string }) {
   if (!project) return <div className="text-red-400 p-8">Project not found: {slug}</div>;
 
   const totalTools = filteredSessions.reduce((s, x) => s + x.total_tool_calls, 0);
-  const avgScore = filteredSessions.length > 0
-    ? filteredSessions.reduce((s, x) => s + x.overall_score, 0) / filteredSessions.length
+  // Weighted average (Cloud formula): weight = log1p(tool_calls) * log1p(duration)
+  const totalWeight = filteredSessions.reduce((s, x) => s + Math.log1p(x.total_tool_calls) * Math.log1p(x.session_duration_minutes), 0);
+  const avgScore = totalWeight > 0
+    ? filteredSessions.reduce((s, x) => s + x.overall_score * Math.log1p(x.total_tool_calls) * Math.log1p(x.session_duration_minutes), 0) / totalWeight
     : 0;
 
   return (

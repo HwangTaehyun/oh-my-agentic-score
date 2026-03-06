@@ -20,13 +20,22 @@ import ToolCallBarChart from "@/components/ToolCallBarChart";
 import ToolBreakdownChart from "@/components/ToolBreakdownChart";
 import SessionTable from "@/components/SessionTable";
 
-/** Compute summary statistics from filtered sessions. */
+/** Session weight matching Cloud leaderboard: log1p(tool_calls) * log1p(duration_minutes) */
+function sessionWeight(s: SessionMetrics): number {
+  return Math.log1p(s.total_tool_calls) * Math.log1p(s.session_duration_minutes);
+}
+
+/** Compute summary statistics from filtered sessions (weighted average = Cloud formula). */
 function computeStats(sessions: SessionMetrics[]) {
   const n = sessions.length;
   const totalTools = sessions.reduce((s, x) => s + x.total_tool_calls, 0);
-  const avgScore = n > 0
-    ? sessions.reduce((s, x) => s + x.overall_score, 0) / n
+
+  // Weighted average score (same as Cloud leaderboard composite_rank_score)
+  const totalWeight = sessions.reduce((s, x) => s + sessionWeight(x), 0);
+  const avgScore = totalWeight > 0
+    ? sessions.reduce((s, x) => s + x.overall_score * sessionWeight(x), 0) / totalWeight
     : 0;
+
   const avgDuration = n > 0
     ? sessions.reduce((s, x) => s + x.session_duration_minutes, 0) / n
     : 0;
