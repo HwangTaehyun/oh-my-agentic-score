@@ -38,17 +38,17 @@ def compute_autonomy(data: SessionData) -> AutonomyMetrics:
 
     max_consecutive = _count_max_consecutive_assistant_turns(data)
 
-    # v2.1: P75 scoring (CV removed)
+    # v2.2: P90 scoring — rewards near-longest stretches while excluding extreme outliers
     stretches = _collect_all_stretches(data)
-    p75 = _compute_p75(stretches)
-    l_score = min(math.log1p(p75) * 2.5, 10.0)
+    p90 = _compute_percentile(stretches, 0.90)
+    l_score = min(math.log1p(p90) * 2.5, 10.0)
 
     return AutonomyMetrics(
         longest_autonomous_stretch_minutes=round(longest_stretch, 2),
         max_tool_calls_between_human=max_tools_between,
         session_duration_minutes=round(data.duration_minutes, 2),
         max_consecutive_assistant_turns=max_consecutive,
-        p75_autonomous_stretch_minutes=round(p75, 2),
+        p75_autonomous_stretch_minutes=round(p90, 2),  # field name kept for backward compat
         consistency_factor=1.0,  # v2.1: always 1.0 (CV penalty removed)
         l_thread_score=round(l_score, 2),
     )
@@ -150,12 +150,12 @@ def _collect_all_stretches(data: SessionData) -> list[float]:
     return stretches if stretches else [0.0]
 
 
-def _compute_p75(stretches: list[float]) -> float:
-    """Compute the 75th percentile of stretch durations."""
+def _compute_percentile(stretches: list[float], percentile: float = 0.90) -> float:
+    """Compute the given percentile of stretch durations."""
     if not stretches:
         return 0.0
     stretches_sorted = sorted(stretches)
-    idx = int(len(stretches_sorted) * 0.75)
+    idx = int(len(stretches_sorted) * percentile)
     idx = min(idx, len(stretches_sorted) - 1)
     return stretches_sorted[idx]
 
