@@ -21,7 +21,7 @@ import click
 from rich.console import Console
 from rich.progress import Progress
 
-from omas.config import CLAUDE_DIR, DEFAULT_SERVER_URL
+from omas.config import CLAUDE_DIR, DEFAULT_SERVER_URL, MINIMUM_TOOL_CALLS
 from omas.display.dashboard import render_session_dashboard
 from omas.display.report import render_report
 from omas.display.trend import render_trend
@@ -254,11 +254,18 @@ def scan(ctx, project: Optional[str], since: Optional[str], force: bool):
     concurrent_map = compute_cross_session_parallelism(session_ranges)
 
     # Phase 3: Update P-thread scores for sessions with concurrent > 1, then save
+    from omas.classifier.thread_classifier import classify_thread
+
     for session_info, data, metrics in parsed_results:
         concurrent = concurrent_map.get(data.session_id, 1)
         if concurrent > 1:
             metrics.parallelism.concurrent_sessions = concurrent
             metrics.parallelism.p_thread_score = min(float(concurrent), 10.0)
+            # Re-classify thread type with updated concurrent_sessions
+            metrics.thread_type = classify_thread(
+                data, metrics.parallelism, metrics.autonomy,
+                metrics.density, metrics.trust,
+            )
             metrics.overall_score = _recompute_overall(metrics)
         store.save_metrics(metrics)
 
@@ -304,6 +311,18 @@ def list_sessions(ctx, project: Optional[str], limit: int):
         )
 
     console.print(table)
+
+    # Show project filter summary from stored metrics
+    store = MetricsStore()
+    stored = store.load_all(project_filter=project)
+    if stored:
+        projects = _build_project_summaries(stored)
+        for p in projects:
+            name = p.project_path.split("/")[-1] if p.project_path else p.project_hash
+            console.print(
+                f"  [dim]{name}: {p.valid_sessions}/{p.session_count} sessions "
+                f"({MINIMUM_TOOL_CALLS}+ tools) | avg score {p.avg_overall_score}[/dim]"
+            )
 
 
 @cli.command()
@@ -469,7 +488,11 @@ def _parse_date(date_str: str) -> datetime:
 
 
 def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSummary]:
-    """Build project-level summaries from session metrics."""
+    """Build project-level summaries from session metrics.
+
+    Only sessions with >= MINIMUM_TOOL_CALLS are included in averages
+    to filter out trivial/aborted sessions that would skew project scores.
+    """
     from collections import Counter, defaultdict
 
     project_sessions: dict[str, list[SessionMetrics]] = defaultdict(list)
@@ -482,27 +505,35 @@ def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSumm
         if not proj_sessions:
             continue
 
+        # Filter: only sessions with enough tool calls for meaningful averages
+        valid = [s for s in proj_sessions if s.total_tool_calls >= MINIMUM_TOOL_CALLS]
+        excluded = len(proj_sessions) - len(valid)
+
+        # Use valid sessions for averages; fall back to all if none qualify
+        avg_source = valid if valid else proj_sessions
+
         type_counts = Counter(s.thread_type.value for s in proj_sessions)
         dominant = max(type_counts, key=lambda k: type_counts[k])
 
-        # Raw dimension averages
-        avg_p = _avg([s.parallelism.p_thread_score for s in proj_sessions])
-        avg_l = _avg([s.autonomy.l_thread_score for s in proj_sessions])
-        avg_b = _avg([s.density.b_thread_score for s in proj_sessions])
-        avg_f = _avg([s.trust.z_thread_score for s in proj_sessions])
+        # Raw dimension averages (from valid sessions only)
+        avg_p = _avg([s.parallelism.p_thread_score for s in avg_source])
+        avg_l = _avg([s.autonomy.l_thread_score for s in avg_source])
+        avg_b = _avg([s.density.b_thread_score for s in avg_source])
+        avg_f = _avg([s.trust.z_thread_score for s in avg_source])
 
         # Normalized dimension averages (same formula as _compute_overall_score)
-        # All dimension scores are already 0-10 scale, just cap at 10
-        p_norm = _avg([min(s.parallelism.p_thread_score, 10.0) for s in proj_sessions])
-        l_norm = _avg([min(s.autonomy.l_thread_score, 10.0) for s in proj_sessions])
-        b_norm = _avg([min(s.density.b_thread_score, 10.0) for s in proj_sessions])
-        f_norm = _avg([min(s.trust.z_thread_score, 10.0) for s in proj_sessions])
+        p_norm = _avg([min(s.parallelism.p_thread_score, 10.0) for s in avg_source])
+        l_norm = _avg([min(s.autonomy.l_thread_score, 10.0) for s in avg_source])
+        b_norm = _avg([min(s.density.b_thread_score, 10.0) for s in avg_source])
+        f_norm = _avg([min(s.trust.z_thread_score, 10.0) for s in avg_source])
 
         summaries.append(
             ProjectSummary(
                 project_path=proj_sessions[0].project_path,
                 project_hash=proj_sessions[0].project_hash,
                 session_count=len(proj_sessions),
+                valid_sessions=len(valid),
+                excluded_sessions=excluded,
                 total_tool_calls=sum(s.total_tool_calls for s in proj_sessions),
                 avg_parallelism_score=avg_p,
                 avg_autonomy_score=avg_l,
@@ -512,7 +543,7 @@ def _build_project_summaries(sessions: list[SessionMetrics]) -> list[ProjectSumm
                 avg_autonomy_norm=l_norm,
                 avg_density_norm=b_norm,
                 avg_trust_norm=f_norm,
-                avg_overall_score=_avg([s.overall_score for s in proj_sessions]),
+                avg_overall_score=_avg([s.overall_score for s in avg_source]),
                 dominant_thread_type=ThreadType(dominant),
                 thread_type_distribution=dict(type_counts),
                 sessions=[s.session_id for s in proj_sessions],

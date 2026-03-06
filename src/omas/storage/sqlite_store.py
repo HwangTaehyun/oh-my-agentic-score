@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS session_metrics (
     max_tool_calls_between_human INTEGER,
     max_consecutive_assistant_turns INTEGER,
     l_thread_score REAL,
+    p75_autonomous_minutes REAL,
+    consistency_factor REAL,
 
     -- Thicker (Density)
     tool_calls_per_minute REAL,
@@ -49,6 +51,9 @@ CREATE TABLE IF NOT EXISTS session_metrics (
     b_thread_score REAL,
     ai_written_lines INTEGER,
     ai_line_bonus REAL,
+    team_action_calls INTEGER,
+    team_query_calls INTEGER,
+    effective_team_score REAL,
 
     -- Fewer (Trust)
     tool_calls_per_human REAL,
@@ -62,6 +67,7 @@ CREATE TABLE IF NOT EXISTS session_metrics (
 
     -- Composite
     overall_score REAL,
+    score_formula_version TEXT DEFAULT 'v1.0',
     analyzed_at TEXT
 )
 """
@@ -83,6 +89,13 @@ class MetricsStore:
             self._migrate_add_column(conn, "ai_written_lines", "INTEGER")
             self._migrate_add_column(conn, "ai_line_bonus", "REAL")
             self._migrate_add_column(conn, "concurrent_sessions", "INTEGER")
+            # v2.0 fields
+            self._migrate_add_column(conn, "p75_autonomous_minutes", "REAL")
+            self._migrate_add_column(conn, "consistency_factor", "REAL")
+            self._migrate_add_column(conn, "team_action_calls", "INTEGER")
+            self._migrate_add_column(conn, "team_query_calls", "INTEGER")
+            self._migrate_add_column(conn, "effective_team_score", "REAL")
+            self._migrate_add_column(conn, "score_formula_version", "TEXT")
 
     @staticmethod
     def _migrate_add_column(conn, column_name: str, column_type: str):
@@ -108,22 +121,26 @@ class MetricsStore:
                     concurrent_sessions,
                     longest_autonomous_minutes, max_tool_calls_between_human,
                     max_consecutive_assistant_turns, l_thread_score,
+                    p75_autonomous_minutes, consistency_factor,
                     tool_calls_per_minute, max_sub_agent_depth,
                     tokens_per_minute, b_thread_score,
                     ai_written_lines, ai_line_bonus,
+                    team_action_calls, team_query_calls, effective_team_score,
                     tool_calls_per_human, assistant_per_human_ratio,
                     ask_user_count, autonomous_tool_call_pct, z_thread_score,
                     tool_breakdown,
-                    overall_score, analyzed_at
+                    overall_score, score_formula_version, analyzed_at
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?,
                     ?, ?, ?, ?,
+                    ?, ?,
                     ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?,
-                    ?, ?
+                    ?, ?, ?
                 )
                 """,
                 (
@@ -147,6 +164,8 @@ class MetricsStore:
                     metrics.autonomy.max_tool_calls_between_human,
                     metrics.autonomy.max_consecutive_assistant_turns,
                     metrics.autonomy.l_thread_score,
+                    metrics.autonomy.p75_autonomous_stretch_minutes,
+                    metrics.autonomy.consistency_factor,
                     # Density
                     metrics.density.tool_calls_per_minute,
                     metrics.density.max_sub_agent_depth,
@@ -154,6 +173,9 @@ class MetricsStore:
                     metrics.density.b_thread_score,
                     metrics.density.ai_written_lines,
                     metrics.density.ai_line_bonus,
+                    metrics.density.team_action_calls,
+                    metrics.density.team_query_calls,
+                    metrics.density.effective_team_score,
                     # Trust
                     metrics.trust.tool_calls_per_human_message,
                     metrics.trust.assistant_per_human_ratio,
@@ -164,6 +186,7 @@ class MetricsStore:
                     json.dumps(metrics.tool_breakdown) if metrics.tool_breakdown else None,
                     # Composite
                     metrics.overall_score,
+                    metrics.score_formula_version,
                     datetime.now().isoformat(),
                 ),
             )
@@ -251,6 +274,7 @@ def _row_to_metrics(row: sqlite3.Row) -> SessionMetrics:
         trust=_build_trust(row),
         tool_breakdown=_parse_tool_breakdown(row),
         ai_written_lines=_safe_row_get(row, "ai_written_lines") or 0,
+        score_formula_version=_safe_row_get(row, "score_formula_version") or "v1.0",
         overall_score=row["overall_score"] or 0.0,
     )
 
@@ -299,6 +323,8 @@ def _build_autonomy(row: sqlite3.Row) -> AutonomyMetrics:
         max_consecutive_assistant_turns=row["max_consecutive_assistant_turns"] or 0,
         l_thread_score=row["l_thread_score"] or 0.0,
         session_duration_minutes=row["session_duration_minutes"] or 0.0,
+        p75_autonomous_stretch_minutes=_safe_row_get(row, "p75_autonomous_minutes") or 0.0,
+        consistency_factor=_safe_row_get(row, "consistency_factor") or 1.0,
     )
 
 
@@ -311,6 +337,9 @@ def _build_density(row: sqlite3.Row) -> DensityMetrics:
         b_thread_score=row["b_thread_score"] or 0.0,
         ai_written_lines=_safe_row_get(row, "ai_written_lines") or 0,
         ai_line_bonus=_safe_row_get(row, "ai_line_bonus") or 0.0,
+        team_action_calls=_safe_row_get(row, "team_action_calls") or 0,
+        team_query_calls=_safe_row_get(row, "team_query_calls") or 0,
+        effective_team_score=_safe_row_get(row, "effective_team_score") or 0.0,
     )
 
 

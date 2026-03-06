@@ -55,13 +55,15 @@ class TestDensityLinearScoring:
         result = compute_density(data)
         assert result.b_thread_score == 10.0
 
-    def test_depth_does_not_multiply(self):
-        """Depth 2 should NOT multiply the score — just total count matters."""
+    def test_depth_multiplies_score(self):
+        """v2.0: Depth >= 2 applies a multiplier: 1.0 + (depth-1) * 0.2."""
         data_flat = _make_density_session(100, 5, depth=1)
         data_nested = _make_density_session(100, 5, depth=2)
         flat = compute_density(data_flat)
         nested = compute_density(data_nested)
-        assert flat.b_thread_score == nested.b_thread_score == 5.0
+        assert flat.b_thread_score == 5.0
+        # 5 * (1.0 + (2-1)*0.2) = 5 * 1.2 = 6.0
+        assert nested.b_thread_score == 6.0
 
     def test_monotonically_increasing(self):
         """More agents should give higher scores."""

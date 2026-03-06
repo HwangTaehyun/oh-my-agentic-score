@@ -5,6 +5,15 @@ from __future__ import annotations
 from omas.config import AI_LINES_FULL_SCORE
 from omas.models import DensityMetrics, SessionData
 
+# Team orchestration tool categories for spam filtering
+TEAM_ACTION_TOOLS = {"TeamCreate", "TaskCreate", "TaskUpdate", "SendMessage"}
+TEAM_QUERY_TOOLS = {"TaskGet", "TaskList"}
+
+# Scoring parameters
+_DEPTH_COEFF = 0.2
+_QUERY_WEIGHT = 0.1
+_TEAM_BONUS_CAP = 2.0
+
 
 def compute_density(
     data: SessionData,
@@ -12,9 +21,12 @@ def compute_density(
 ) -> DensityMetrics:
     """Compute work density metrics for a session.
 
-    Measures agent utilization density — how many agents (team + sub)
-    were used in the session. Score = min(total_agents, 10). Linear scale,
-    10 agents = perfect score.
+    v2.0: Multi-factor scoring with anti-spam filtering.
+    Score = min(base * depth_mult + team_bonus, 10.0)
+      - base = min(total_agents, 10)
+      - depth_mult = 1.0 + (max_depth - 1) * 0.2  (if depth >= 2)
+      - team_bonus = min(effective_team_score / 10, 2.0)
+      - effective_team_score = action_calls + query_calls * 0.1
 
     Args:
         data: Parsed session data.
@@ -31,12 +43,33 @@ def compute_density(
     total_tokens = data.total_usage.total_tokens
     tokens_per_min = total_tokens / max(duration, 0.1)
 
-    # Max sub-agent depth (kept for metrics/classification, not for scoring)
+    # Max sub-agent depth
     max_depth = _compute_max_depth(data)
 
-    # B-thread score: total agents (team + sub), capped at 10. Linear scale.
+    # --- v2.0 Multi-factor scoring ---
+
+    # Base score: agent count, capped at 10
     total_agents = len(data.sub_agents)
-    b_score = min(float(total_agents), 10.0)
+    base = min(float(total_agents), 10.0)
+
+    # Spam-filtered team tool calls
+    action_calls = sum(1 for tc in data.tool_calls if tc.name in TEAM_ACTION_TOOLS)
+    query_calls = sum(1 for tc in data.tool_calls if tc.name in TEAM_QUERY_TOOLS)
+    effective_team_score = action_calls + query_calls * _QUERY_WEIGHT
+
+    # Depth multiplier: reward deeper orchestration
+    depth_mult = 1.0
+    if max_depth >= 2:
+        depth_mult = 1.0 + (max_depth - 1) * _DEPTH_COEFF
+
+    # Anti-gaming: team bonus only when actual agents exist
+    if total_agents > 0:
+        team_bonus = min(effective_team_score / 10.0, _TEAM_BONUS_CAP)
+    else:
+        team_bonus = 0.0
+
+    # Final score
+    b_score = min(base * depth_mult + team_bonus, 10.0)
 
     # AI-written lines bonus: linear, max +1.0 at AI_LINES_FULL_SCORE lines
     ai_lines = data.ai_written_lines
@@ -50,6 +83,9 @@ def compute_density(
         b_thread_score=round(b_score, 2),
         ai_written_lines=ai_lines,
         ai_line_bonus=round(line_bonus, 4),
+        team_action_calls=action_calls,
+        team_query_calls=query_calls,
+        effective_team_score=round(effective_team_score, 2),
     )
 
 

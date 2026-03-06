@@ -48,6 +48,10 @@ C_THREAD_MIN_TOOLS_PER_GAP = 3
 # from the effective human message count in the Fewer (F) score.
 TRIVIAL_DELEGATION_THRESHOLD = 5
 
+# Project-level filtering: sessions with fewer tool calls are excluded
+# from project averages to avoid noise from trivial/aborted sessions.
+MINIMUM_TOOL_CALLS = 10
+
 # AI-written lines bonus: lines needed for full +1.0 density bonus
 AI_LINES_FULL_SCORE = 50_000
 
