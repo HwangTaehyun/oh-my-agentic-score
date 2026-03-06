@@ -105,7 +105,7 @@ function persistHiddenProjects(hashes: string[]) {
   localStorage.setItem(HIDDEN_PROJECTS_KEY, JSON.stringify(hashes));
 }
 
-function ProjectsHero({ count, hiddenCount }: { count: number; hiddenCount: number }) {
+function ProjectsHero({ count, hiddenCount, comparison }: { count: number; hiddenCount: number; comparison?: { qualified_session_count: number; excluded_session_count: number } }) {
   return (
     <div>
       <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
@@ -116,6 +116,11 @@ function ProjectsHero({ count, hiddenCount }: { count: number; hiddenCount: numb
         {count} projects tracked
         {hiddenCount > 0 && <span style={{ color: "#666" }}> ({hiddenCount} hidden)</span>}
       </p>
+      {comparison && comparison.excluded_session_count > 0 && (
+        <p className="text-[11px] font-mono mt-2 px-3 py-1.5 rounded-md inline-block" style={{ color: "#FFD600", background: "#1A1A00", border: "1px solid #332D00" }}>
+          {comparison.excluded_session_count} sessions excluded (requires: duration &ge; 5m, tool calls &ge; 10, human messages &ge; 1)
+        </p>
+      )}
     </div>
   );
 }
@@ -247,7 +252,7 @@ function ProjectsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <ProjectsHero count={sortedProjects.length} hiddenCount={hiddenCount} />
+        <ProjectsHero count={sortedProjects.length} hiddenCount={hiddenCount} comparison={data.comparison} />
         <div className="flex items-center gap-2">
           <SortToggle dir={sortDir} onToggle={toggleSort} />
           {hiddenCount > 0 && (

@@ -57,13 +57,18 @@ function applyFilters(
 }
 
 /** Pencil P6 hero section with green subtitle annotation. */
-function OverviewHero({ totalSessions }: { totalSessions: number }) {
+function OverviewHero({ totalSessions, excludedCount }: { totalSessions: number; excludedCount: number }) {
   return (
     <div>
       <p className="text-[11px] font-mono tracking-wider mb-2" style={{ color: "#00FF88", letterSpacing: "0.5px" }}>
-        // THREAD-BASED ENGINEERING METRICS ({totalSessions} sessions)
+        // THREAD-BASED ENGINEERING METRICS ({totalSessions} qualified sessions)
       </p>
       <h1 className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-1px" }}>Overview</h1>
+      {excludedCount > 0 && (
+        <p className="text-[11px] font-mono mt-2 px-3 py-1.5 rounded-md inline-block" style={{ color: "#FFD600", background: "#1A1A00", border: "1px solid #332D00" }}>
+          {excludedCount} sessions excluded (requires: duration &ge; 5m, tool calls &ge; 10, human messages &ge; 1)
+        </p>
+      )}
     </div>
   );
 }
@@ -200,7 +205,7 @@ export default function OverviewPage() {
   return (
     <ChartProvider>
       <div className="space-y-6">
-        <OverviewHero totalSessions={data.total_sessions} />
+        <OverviewHero totalSessions={data.total_sessions} excludedCount={data.comparison?.excluded_session_count ?? 0} />
 
         {/* Filters */}
         <div className="flex items-center gap-4 flex-wrap">

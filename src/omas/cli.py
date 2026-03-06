@@ -311,31 +311,32 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
     store = MetricsStore()
     since_dt = _parse_date(since) if since else None
 
-    sessions = store.load_all(project_filter=project, since=since_dt)
+    all_sessions = store.load_all(project_filter=project, since=since_dt)
 
-    if not sessions:
+    if not all_sessions:
         console.print("[yellow]No data. Run 'omas scan' first.[/yellow]")
         return
 
-    # Build project summaries
-    projects = _build_project_summaries(sessions)
+    # Filter to qualified sessions only (matches Cloud upload criteria)
+    qualified = [s for s in all_sessions if is_qualified(s)]
+    excluded = len(all_sessions) - len(qualified)
 
-    # Compute comparison metrics
-    qualified = [s for s in sessions if is_qualified(s)]
-    excluded = len(sessions) - len(qualified)
-    if qualified:
-        total_weight = sum(session_weight(s) for s in qualified)
-        weighted_score = (
-            sum(s.overall_score * session_weight(s) for s in qualified) / total_weight
-            if total_weight > 0
-            else 0.0
-        )
-        cons_score = calc_consistency(qualified)
-        composite = weighted_score  # = Cloud leaderboard (no consistency penalty)
-    else:
-        weighted_score = 0.0
-        cons_score = 5.0
-        composite = 0.0
+    if not qualified:
+        console.print("[yellow]No qualified sessions (need duration>=5m, tools>=10, messages>=1).[/yellow]")
+        return
+
+    # Build project summaries from qualified sessions only (= Cloud)
+    projects = _build_project_summaries(qualified)
+
+    # Compute comparison metrics from qualified sessions
+    total_weight = sum(session_weight(s) for s in qualified)
+    weighted_score = (
+        sum(s.overall_score * session_weight(s) for s in qualified) / total_weight
+        if total_weight > 0
+        else 0.0
+    )
+    cons_score = calc_consistency(qualified)
+    composite = weighted_score  # = Cloud leaderboard (no consistency penalty)
 
     comparison = ComparisonMetrics(
         qualified_session_count=len(qualified),
@@ -347,8 +348,8 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
 
     export_data = ExportData(
         generated_at=datetime.now(),
-        total_sessions=len(sessions),
-        sessions=sessions,
+        total_sessions=len(qualified),
+        sessions=qualified,
         projects=projects,
         comparison=comparison,
     )
@@ -365,7 +366,10 @@ def export(ctx, output: Optional[Path], project: Optional[str], since: Optional[
     with open(output, "w", encoding="utf-8") as f:
         f.write(export_data.model_dump_json(indent=2))
 
-    console.print(f"[green]Exported {len(sessions)} sessions to {output}[/green]")
+    console.print(
+        f"[green]Exported {len(qualified)} qualified sessions to {output} "
+        f"({excluded} excluded)[/green]"
+    )
 
 
 @cli.command()
