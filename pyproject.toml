@@ -1,6 +1,6 @@
 [project]
 name = "oh-my-agentic-score"
-version = "0.8.0"
+version = "0.8.1"
 description = "Measure agentic coding performance using Thread-Based Engineering framework"
 requires-python = ">=3.11"
 license = "MIT"
@@ -36,7 +36,6 @@ Issues = "https://github.com/HwangTaehyun/oh-my-agentic-score/issues"
 
 [project.scripts]
 omas = "omas.cli:cli"
-oh-my-agentic-score = "omas.cli:cli"
 
 [build-system]
 requires = ["hatchling"]
