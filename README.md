@@ -16,6 +16,10 @@
 
 ---
 
+<p align="center">
+  <img src="assets/dashboard-preview.gif" alt="Dashboard Preview" width="720">
+</p>
+
 > *"If you can't measure it, you can't improve it."*
 
 In the age of AI-assisted development, **agentic coding** — the ability to collaborate effectively with AI agents — is becoming an essential skill for every developer. But how do you know if you're actually getting better at it? **You can't improve what you can't measure.**
@@ -62,7 +66,11 @@ omas dashboard
 
 ### Cloud Ranking (Optional)
 
-Upload your scores and compare with other developers at [oh-my-agentic-score.com](https://oh-my-agentic-score.com):
+Upload your scores and compete on the **global leaderboard** at [oh-my-agentic-score.com](https://oh-my-agentic-score.com):
+
+<p align="center">
+  <img src="assets/cloud-leaderboard.png" alt="Global Leaderboard" width="720">
+</p>
 
 ```bash
 # 1. Authenticate via GitHub
